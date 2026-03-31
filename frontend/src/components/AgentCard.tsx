@@ -86,6 +86,17 @@ export default function AgentCard({ job, onCancel, onDelete }: Props) {
         <span>{job.model.split("-").slice(0, 2).join("-")}</span>
         {duration && <span>{duration}</span>}
         {agent?.num_turns ? <span>{agent.num_turns} turns</span> : null}
+        {job.permissions?.preset && (
+          <span className={`permission-badge perm-${job.permissions.preset}`}>
+            {job.permissions.preset === "read-only"
+              ? "read-only"
+              : job.permissions.preset === "standard"
+              ? "standard"
+              : job.permissions.preset === "full"
+              ? "full access"
+              : "custom"}
+          </span>
+        )}
       </div>
 
       {expanded && (

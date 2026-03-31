@@ -8,6 +8,42 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+export interface Permissions {
+  preset: string;
+  file_read: boolean;
+  file_write: boolean;
+  bash: boolean;
+  web_search: boolean;
+  mcp: boolean;
+}
+
+export const PERMISSION_PRESETS: Record<string, Permissions> = {
+  "read-only": {
+    preset: "read-only",
+    file_read: true,
+    file_write: false,
+    bash: false,
+    web_search: false,
+    mcp: false,
+  },
+  standard: {
+    preset: "standard",
+    file_read: true,
+    file_write: true,
+    bash: true,
+    web_search: false,
+    mcp: false,
+  },
+  full: {
+    preset: "full",
+    file_read: true,
+    file_write: true,
+    bash: true,
+    web_search: true,
+    mcp: true,
+  },
+};
+
 export interface Job {
   id: string;
   title: string;
@@ -17,6 +53,7 @@ export interface Job {
   model: string;
   work_dir: string;
   project_id: string | null;
+  permissions: Permissions;
   created_at: string;
   updated_at: string;
 }
@@ -63,6 +100,7 @@ export const api = {
       priority?: number;
       work_dir?: string;
       project_id?: string;
+      permissions?: Permissions;
     }) => request<Job>("/jobs", { method: "POST", body: JSON.stringify(data) }),
     cancel: (id: string) =>
       request<{ ok: boolean }>(`/jobs/${id}/cancel`, { method: "POST" }),

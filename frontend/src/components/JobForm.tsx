@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { api, Project } from "../api";
+import { api, Project, Permissions, PERMISSION_PRESETS } from "../api";
 
 interface Props {
   projects: Project[];
@@ -20,6 +20,8 @@ export default function JobForm({ projects, selectedProject, onClose, onCreated 
   const [model, setModel] = useState(MODELS[0].value);
   const [workDir, setWorkDir] = useState("");
   const [projectId, setProjectId] = useState(selectedProject || "");
+  const [permissions, setPermissions] = useState<Permissions>(PERMISSION_PRESETS["standard"]);
+  const [showPermDetails, setShowPermDetails] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -33,6 +35,7 @@ export default function JobForm({ projects, selectedProject, onClose, onCreated 
         model,
         work_dir: workDir.trim(),
         project_id: projectId || undefined,
+        permissions,
       });
       onCreated();
       onClose();
@@ -97,6 +100,67 @@ export default function JobForm({ projects, selectedProject, onClose, onCreated 
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="form-group">
+            <label>Permissions</label>
+            <div className="permission-presets">
+              {Object.entries(PERMISSION_PRESETS).map(([key, preset]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`btn btn-sm permission-preset-btn${
+                    permissions.preset === key ? " active" : ""
+                  }`}
+                  onClick={() => setPermissions(preset)}
+                >
+                  {key === "read-only" ? "Read Only" : key === "standard" ? "Standard" : "Full Access"}
+                </button>
+              ))}
+            </div>
+            <p className="permission-description">
+              {permissions.preset === "read-only" &&
+                "Agent can only read files. No writes, no shell commands."}
+              {permissions.preset === "standard" &&
+                "Agent can read/write files and run shell commands."}
+              {permissions.preset === "full" &&
+                "Agent has full access including web search and MCP tools."}
+            </p>
+            <button
+              type="button"
+              className="btn-link"
+              onClick={() => setShowPermDetails(!showPermDetails)}
+            >
+              {showPermDetails ? "Hide details" : "Show details"}
+            </button>
+            {showPermDetails && (
+              <div className="permission-details">
+                {(
+                  [
+                    ["file_read", "File Read"],
+                    ["file_write", "File Write"],
+                    ["bash", "Shell Commands"],
+                    ["web_search", "Web Search"],
+                    ["mcp", "MCP Tools"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <label key={key} className="permission-toggle">
+                    <input
+                      type="checkbox"
+                      checked={permissions[key]}
+                      onChange={(e) =>
+                        setPermissions({
+                          ...permissions,
+                          preset: "custom",
+                          [key]: e.target.checked,
+                        })
+                      }
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="form-actions">

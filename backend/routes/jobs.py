@@ -1,7 +1,8 @@
+import json
 import uuid
 from fastapi import APIRouter
 from database import get_db
-from models import JobCreate, JobUpdate
+from models import JobCreate, JobUpdate, DEFAULT_PERMISSIONS
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -21,7 +22,15 @@ async def list_jobs(project_id: str = None, status: str = None):
         query += " ORDER BY created_at DESC"
         cursor = await db.execute(query, params)
         rows = await cursor.fetchall()
-        return [dict(r) for r in rows]
+        results = []
+        for r in rows:
+            job = dict(r)
+            try:
+                job["permissions"] = json.loads(job.get("permissions") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                job["permissions"] = DEFAULT_PERMISSIONS
+            results.append(job)
+        return results
     finally:
         await db.close()
 
@@ -34,7 +43,12 @@ async def get_job(job_id: str):
         row = await cursor.fetchone()
         if not row:
             return {"error": "not found"}, 404
-        return dict(row)
+        job = dict(row)
+        try:
+            job["permissions"] = json.loads(job.get("permissions") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            job["permissions"] = DEFAULT_PERMISSIONS
+        return job
     finally:
         await db.close()
 
@@ -42,17 +56,21 @@ async def get_job(job_id: str):
 @router.post("")
 async def create_job(body: JobCreate):
     job_id = str(uuid.uuid4())
+    permissions = body.permissions if body.permissions else DEFAULT_PERMISSIONS
+    permissions_json = json.dumps(permissions)
     db = await get_db()
     try:
         await db.execute(
-            """INSERT INTO jobs (id, title, prompt, model, priority, work_dir, project_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (job_id, body.title, body.prompt, body.model, body.priority, body.work_dir, body.project_id),
+            """INSERT INTO jobs (id, title, prompt, model, priority, work_dir, project_id, permissions)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (job_id, body.title, body.prompt, body.model, body.priority, body.work_dir, body.project_id, permissions_json),
         )
         await db.commit()
         cursor = await db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
         row = await cursor.fetchone()
-        return dict(row)
+        job = dict(row)
+        job["permissions"] = json.loads(job["permissions"]) if job["permissions"] else DEFAULT_PERMISSIONS
+        return job
     finally:
         await db.close()
 

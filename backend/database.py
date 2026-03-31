@@ -31,6 +31,7 @@ async def init_db():
                 model TEXT DEFAULT 'claude-sonnet-4-20250514',
                 work_dir TEXT DEFAULT '',
                 project_id TEXT REFERENCES projects(id),
+                permissions TEXT DEFAULT '{}',
                 created_at TEXT DEFAULT (datetime('now')),
                 updated_at TEXT DEFAULT (datetime('now'))
             );
@@ -70,5 +71,12 @@ async def init_db():
             );
         """)
         await db.commit()
+
+        # Migrate: add permissions column if missing
+        cursor = await db.execute("PRAGMA table_info(jobs)")
+        columns = [row[1] for row in await cursor.fetchall()]
+        if "permissions" not in columns:
+            await db.execute("ALTER TABLE jobs ADD COLUMN permissions TEXT DEFAULT '{}'")
+            await db.commit()
     finally:
         await db.close()

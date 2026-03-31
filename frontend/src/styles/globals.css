@@ -415,7 +415,7 @@ input, textarea, select {
   margin-bottom: 6px;
 }
 
-.form-group input,
+.form-group input:not([type="checkbox"]),
 .form-group textarea,
 .form-group select {
   width: 100%;
@@ -428,7 +428,7 @@ input, textarea, select {
   transition: border-color 0.15s;
 }
 
-.form-group input:focus,
+.form-group input:not([type="checkbox"]):focus,
 .form-group textarea:focus,
 .form-group select:focus {
   border-color: var(--accent);
@@ -472,4 +472,102 @@ input, textarea, select {
 
 .status-pill.running {
   animation: pulse 2s ease-in-out infinite;
+}
+
+/* Permissions UI */
+.permission-presets {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.permission-preset-btn {
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  transition: all 0.15s;
+}
+
+.permission-preset-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.permission-preset-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.permission-description {
+  margin-top: 0.375rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.btn-link {
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  padding: 0;
+  margin-top: 0.25rem;
+  text-decoration: underline;
+}
+
+.btn-link:hover {
+  color: var(--text-secondary);
+}
+
+.permission-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: var(--bg-primary);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.permission-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.permission-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.permission-badge {
+  font-size: 0.7rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.perm-read-only {
+  background: rgba(93, 173, 226, 0.15);
+  color: var(--info);
+}
+
+.perm-standard {
+  background: rgba(76, 175, 125, 0.15);
+  color: var(--success);
+}
+
+.perm-full {
+  background: rgba(212, 168, 67, 0.15);
+  color: var(--warning);
+}
+
+.perm-custom {
+  background: rgba(180, 130, 220, 0.15);
+  color: #b482dc;
 }

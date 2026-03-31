@@ -9,6 +9,7 @@ from typing import Optional
 import aiosqlite
 
 from database import get_db
+from models import DEFAULT_PERMISSIONS
 
 MAX_CONCURRENT_AGENTS = 5
 POLL_INTERVAL = 2  # seconds
@@ -78,6 +79,25 @@ class Orchestrator:
 
         asyncio.create_task(self._run_agent(agent_id, job))
 
+    def _build_allowed_tools(self, permissions: dict) -> list[str]:
+        """Convert permission flags to Claude CLI --allowedTools patterns."""
+        tools = []
+        if permissions.get("file_read", True):
+            tools.append("Read")
+            tools.append("Glob")
+            tools.append("Grep")
+        if permissions.get("file_write", False):
+            tools.append("Edit")
+            tools.append("Write")
+        if permissions.get("bash", False):
+            tools.append("Bash")
+        if permissions.get("web_search", False):
+            tools.append("WebSearch")
+            tools.append("WebFetch")
+        if permissions.get("mcp", False):
+            tools.append("mcp__*")
+        return tools
+
     async def _run_agent(self, agent_id: str, job: dict):
         job_id = job["id"]
         work_dir = job["work_dir"] or os.getcwd()
@@ -86,14 +106,27 @@ class Orchestrator:
         start_time = datetime.now(timezone.utc)
         seq = 0
 
+        # Parse permissions
+        try:
+            permissions = json.loads(job.get("permissions") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            permissions = DEFAULT_PERMISSIONS
+
         try:
             cmd = [
                 "claude",
                 "--print",
                 "--output-format", "stream-json",
                 "--model", model,
-                prompt,
             ]
+
+            # Add allowed tools based on permissions
+            allowed_tools = self._build_allowed_tools(permissions)
+            if allowed_tools:
+                for tool in allowed_tools:
+                    cmd.extend(["--allowedTools", tool])
+
+            cmd.append(prompt)
 
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
