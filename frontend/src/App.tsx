@@ -1,16 +1,33 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { api, Job, Project } from "./api";
+import { api, Job, Project, Assistant, Permissions } from "./api";
 import { socket } from "./socket";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import AgentGrid from "./components/AgentGrid";
 import JobForm from "./components/JobForm";
+import AssistantList from "./components/AssistantList";
+import AssistantForm from "./components/AssistantForm";
+
+export interface JobPrefill {
+  title: string;
+  prompt: string;
+  model: string;
+  workDir: string;
+  projectId: string;
+  permissions: Permissions;
+  assistantId: string;
+}
 
 export default function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [showJobForm, setShowJobForm] = useState(false);
+  const [view, setView] = useState<"jobs" | "assistants">("jobs");
+  const [assistants, setAssistants] = useState<Assistant[]>([]);
+  const [showAssistantForm, setShowAssistantForm] = useState(false);
+  const [editingAssistant, setEditingAssistant] = useState<Assistant | null>(null);
+  const [jobPrefill, setJobPrefill] = useState<Partial<JobPrefill> | null>(null);
 
   const loadJobs = useCallback(async () => {
     const data = await api.jobs.list(selectedProject || undefined);
@@ -22,10 +39,16 @@ export default function App() {
     setProjects(data);
   }, []);
 
+  const loadAssistants = useCallback(async () => {
+    const data = await api.assistants.list();
+    setAssistants(data);
+  }, []);
+
   useEffect(() => {
     loadJobs();
     loadProjects();
-  }, [loadJobs, loadProjects]);
+    loadAssistants();
+  }, [loadJobs, loadProjects, loadAssistants]);
 
   // Real-time updates
   useEffect(() => {
@@ -59,9 +82,45 @@ export default function App() {
     loadJobs();
   }
 
+  function handleSpawnFromAssistant(assistant: Assistant) {
+    setJobPrefill({
+      title: "",
+      prompt: "",
+      model: assistant.default_model,
+      workDir: assistant.default_work_dir,
+      projectId: assistant.default_project_id || "",
+      permissions: assistant.default_permissions,
+      assistantId: assistant.id,
+    });
+    setShowJobForm(true);
+    setView("jobs");
+  }
+
+  function handleEditAssistant(assistant: Assistant) {
+    setEditingAssistant(assistant);
+    setShowAssistantForm(true);
+  }
+
+  async function handleDeleteAssistant(id: string) {
+    await api.assistants.delete(id);
+    loadAssistants();
+  }
+
   return (
     <div className="app">
-      <Header jobs={jobs} onNewJob={() => setShowJobForm(true)} />
+      <Header
+        jobs={jobs}
+        view={view}
+        onViewChange={setView}
+        onNewJob={() => {
+          setJobPrefill(null);
+          setShowJobForm(true);
+        }}
+        onNewAssistant={() => {
+          setEditingAssistant(null);
+          setShowAssistantForm(true);
+        }}
+      />
       <div className="main-layout">
         <Sidebar
           projects={projects}
@@ -71,20 +130,51 @@ export default function App() {
           jobs={jobs}
         />
         <main className="content">
-          <AgentGrid
-            jobs={jobs}
-            onCancel={handleCancel}
-            onDelete={handleDelete}
-            onNewJob={() => setShowJobForm(true)}
-          />
+          {view === "jobs" ? (
+            <AgentGrid
+              jobs={jobs}
+              onCancel={handleCancel}
+              onDelete={handleDelete}
+              onNewJob={() => {
+                setJobPrefill(null);
+                setShowJobForm(true);
+              }}
+            />
+          ) : (
+            <AssistantList
+              assistants={assistants}
+              onSpawn={handleSpawnFromAssistant}
+              onEdit={handleEditAssistant}
+              onDelete={handleDeleteAssistant}
+              onNewAssistant={() => {
+                setEditingAssistant(null);
+                setShowAssistantForm(true);
+              }}
+            />
+          )}
         </main>
       </div>
       {showJobForm && (
         <JobForm
           projects={projects}
           selectedProject={selectedProject}
-          onClose={() => setShowJobForm(false)}
+          onClose={() => {
+            setShowJobForm(false);
+            setJobPrefill(null);
+          }}
           onCreated={loadJobs}
+          prefill={jobPrefill}
+        />
+      )}
+      {showAssistantForm && (
+        <AssistantForm
+          projects={projects}
+          assistant={editingAssistant}
+          onClose={() => {
+            setShowAssistantForm(false);
+            setEditingAssistant(null);
+          }}
+          onSaved={loadAssistants}
         />
       )}
     </div>

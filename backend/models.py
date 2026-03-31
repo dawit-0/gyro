@@ -58,3 +58,35 @@ class ProjectCreate(BaseModel):
 
 class AnswerCreate(BaseModel):
     answer: str
+
+
+class AssistantCreate(BaseModel):
+    name: str
+    description: str = ""
+    instructions: str = ""
+    context: list[dict] = []
+    default_model: str = "claude-sonnet-4-20250514"
+    default_permissions: Optional[dict] = None
+    default_work_dir: str = ""
+    default_project_id: Optional[str] = None
+
+
+class AssistantUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    instructions: Optional[str] = None
+    context: Optional[list[dict]] = None
+    default_model: Optional[str] = None
+    default_permissions: Optional[dict] = None
+    default_work_dir: Optional[str] = None
+    default_project_id: Optional[str] = None
+
+
+class SpawnJob(BaseModel):
+    title: str
+    prompt: str = ""
+    model: Optional[str] = None
+    priority: int = 0
+    work_dir: Optional[str] = None
+    project_id: Optional[str] = None
+    permissions: Optional[dict] = None

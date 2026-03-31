@@ -69,6 +69,20 @@ async def init_db():
                 created_at TEXT DEFAULT (datetime('now')),
                 answered_at TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS assistants (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                instructions TEXT DEFAULT '',
+                context TEXT DEFAULT '[]',
+                default_model TEXT DEFAULT 'claude-sonnet-4-20250514',
+                default_permissions TEXT DEFAULT '{}',
+                default_work_dir TEXT DEFAULT '',
+                default_project_id TEXT REFERENCES projects(id),
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
         """)
         await db.commit()
 
@@ -77,6 +91,11 @@ async def init_db():
         columns = [row[1] for row in await cursor.fetchall()]
         if "permissions" not in columns:
             await db.execute("ALTER TABLE jobs ADD COLUMN permissions TEXT DEFAULT '{}'")
+            await db.commit()
+
+        # Migrate: add assistant_id column if missing
+        if "assistant_id" not in columns:
+            await db.execute("ALTER TABLE jobs ADD COLUMN assistant_id TEXT REFERENCES assistants(id)")
             await db.commit()
     finally:
         await db.close()

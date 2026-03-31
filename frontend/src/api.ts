@@ -88,6 +88,27 @@ export interface Project {
   created_at: string;
 }
 
+export interface ContextItem {
+  type: "file" | "url" | "text";
+  path?: string;
+  url?: string;
+  content?: string;
+}
+
+export interface Assistant {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  context: ContextItem[];
+  default_model: string;
+  default_permissions: Permissions;
+  default_work_dir: string;
+  default_project_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export const api = {
   jobs: {
     list: (projectId?: string) =>
@@ -122,5 +143,58 @@ export const api = {
       }),
     delete: (id: string) =>
       request<{ ok: boolean }>(`/projects/${id}`, { method: "DELETE" }),
+  },
+  assistants: {
+    list: () => request<Assistant[]>("/assistants"),
+    get: (id: string) => request<Assistant>(`/assistants/${id}`),
+    create: (data: {
+      name: string;
+      description?: string;
+      instructions?: string;
+      context?: ContextItem[];
+      default_model?: string;
+      default_permissions?: Permissions;
+      default_work_dir?: string;
+      default_project_id?: string;
+    }) =>
+      request<Assistant>("/assistants", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    update: (
+      id: string,
+      data: Partial<{
+        name: string;
+        description: string;
+        instructions: string;
+        context: ContextItem[];
+        default_model: string;
+        default_permissions: Permissions;
+        default_work_dir: string;
+        default_project_id: string;
+      }>
+    ) =>
+      request<Assistant>(`/assistants/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) =>
+      request<{ ok: boolean }>(`/assistants/${id}`, { method: "DELETE" }),
+    spawn: (
+      id: string,
+      data: {
+        title: string;
+        prompt?: string;
+        model?: string;
+        priority?: number;
+        work_dir?: string;
+        project_id?: string;
+        permissions?: Permissions;
+      }
+    ) =>
+      request<Job>(`/assistants/${id}/spawn`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
   },
 };

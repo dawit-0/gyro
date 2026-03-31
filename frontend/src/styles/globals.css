@@ -571,3 +571,202 @@ input, textarea, select {
   background: rgba(180, 130, 220, 0.15);
   color: #b482dc;
 }
+
+/* Header Tabs */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.header-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-tertiary);
+  padding: 3px;
+  border-radius: var(--radius);
+}
+
+.header-tab {
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  transition: all 0.15s;
+}
+
+.header-tab:hover {
+  color: var(--text-secondary);
+}
+
+.header-tab.active {
+  background: var(--accent);
+  color: white;
+}
+
+/* Assistant Grid */
+.assistant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+/* Assistant Card */
+.assistant-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  transition: border-color 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.assistant-card:hover {
+  border-color: var(--text-muted);
+}
+
+.assistant-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.assistant-card-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.assistant-card-badges {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.badge {
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.badge-model {
+  background: rgba(93, 173, 226, 0.15);
+  color: var(--info);
+}
+
+.badge-perm {
+  background: rgba(76, 175, 125, 0.15);
+  color: var(--success);
+}
+
+.assistant-card-description {
+  font-size: 0.825rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.assistant-card-instructions {
+  font-size: 0.775rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  font-style: italic;
+}
+
+.assistant-card-meta {
+  font-size: 0.725rem;
+  color: var(--text-muted);
+}
+
+.assistant-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* Modal wide variant */
+.modal-wide {
+  width: 640px;
+}
+
+/* Textarea variants */
+.textarea-tall {
+  min-height: 160px !important;
+}
+
+.textarea-short {
+  min-height: 60px !important;
+}
+
+/* Context list */
+.context-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.context-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.context-item input,
+.context-item textarea {
+  flex: 1;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  outline: none;
+  font-size: 0.825rem;
+}
+
+.context-item input:focus,
+.context-item textarea:focus {
+  border-color: var(--accent);
+}
+
+.context-type-badge {
+  font-size: 0.65rem;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+
+.btn-danger-icon {
+  color: var(--danger) !important;
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.btn-danger-icon:hover {
+  background: rgba(225, 112, 85, 0.1) !important;
+}
+
+.context-add-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+/* Text muted utility */
+.text-muted {
+  color: var(--text-muted);
+}

@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { api, Project, Permissions, PERMISSION_PRESETS } from "../api";
+import { JobPrefill } from "../App";
 
 interface Props {
   projects: Project[];
   selectedProject: string | null;
   onClose: () => void;
   onCreated: () => void;
+  prefill?: Partial<JobPrefill> | null;
 }
 
 const MODELS = [
@@ -14,29 +16,44 @@ const MODELS = [
   { value: "claude-haiku-3-5-20241022", label: "Claude Haiku" },
 ];
 
-export default function JobForm({ projects, selectedProject, onClose, onCreated }: Props) {
-  const [title, setTitle] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [model, setModel] = useState(MODELS[0].value);
-  const [workDir, setWorkDir] = useState("");
-  const [projectId, setProjectId] = useState(selectedProject || "");
-  const [permissions, setPermissions] = useState<Permissions>(PERMISSION_PRESETS["standard"]);
+export default function JobForm({ projects, selectedProject, onClose, onCreated, prefill }: Props) {
+  const [title, setTitle] = useState(prefill?.title || "");
+  const [prompt, setPrompt] = useState(prefill?.prompt || "");
+  const [model, setModel] = useState(prefill?.model || MODELS[0].value);
+  const [workDir, setWorkDir] = useState(prefill?.workDir || "");
+  const [projectId, setProjectId] = useState(prefill?.projectId || selectedProject || "");
+  const [permissions, setPermissions] = useState<Permissions>(
+    prefill?.permissions?.preset ? prefill.permissions : PERMISSION_PRESETS["standard"]
+  );
   const [showPermDetails, setShowPermDetails] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const isSpawn = !!prefill?.assistantId;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim() || !prompt.trim()) return;
     setSubmitting(true);
     try {
-      await api.jobs.create({
-        title: title.trim(),
-        prompt: prompt.trim(),
-        model,
-        work_dir: workDir.trim(),
-        project_id: projectId || undefined,
-        permissions,
-      });
+      if (isSpawn && prefill?.assistantId) {
+        await api.assistants.spawn(prefill.assistantId, {
+          title: title.trim(),
+          prompt: prompt.trim(),
+          model,
+          work_dir: workDir.trim(),
+          project_id: projectId || undefined,
+          permissions,
+        });
+      } else {
+        await api.jobs.create({
+          title: title.trim(),
+          prompt: prompt.trim(),
+          model,
+          work_dir: workDir.trim(),
+          project_id: projectId || undefined,
+          permissions,
+        });
+      }
       onCreated();
       onClose();
     } catch (err) {
@@ -49,7 +66,7 @@ export default function JobForm({ projects, selectedProject, onClose, onCreated 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>New Job</h2>
+        <h2>{isSpawn ? "Spawn Job from Assistant" : "New Job"}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Title</label>
@@ -66,7 +83,7 @@ export default function JobForm({ projects, selectedProject, onClose, onCreated 
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Detailed instructions for the agent..."
+              placeholder={isSpawn ? "Describe the specific task for this job..." : "Detailed instructions for the agent..."}
             />
           </div>
 
@@ -172,7 +189,7 @@ export default function JobForm({ projects, selectedProject, onClose, onCreated 
               className="btn btn-primary"
               disabled={submitting || !title.trim() || !prompt.trim()}
             >
-              {submitting ? "Creating..." : "Create Job"}
+              {submitting ? "Creating..." : isSpawn ? "Spawn Job" : "Create Job"}
             </button>
           </div>
         </form>
