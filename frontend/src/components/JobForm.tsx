@@ -16,6 +16,22 @@ const MODELS = [
   { value: "claude-haiku-3-5-20241022", label: "Claude Haiku" },
 ];
 
+type ScheduleMode = "now" | "later" | "recurring";
+
+const CRON_PRESETS = [
+  { label: "Every hour", value: "0 * * * *" },
+  { label: "Daily at 9am", value: "0 9 * * *" },
+  { label: "Weekdays at 9am", value: "0 9 * * 1-5" },
+  { label: "Weekly (Mon)", value: "0 9 * * 1" },
+  { label: "Monthly (1st)", value: "0 9 1 * *" },
+];
+
+function describeCron(expr: string): string {
+  const match = CRON_PRESETS.find((p) => p.value === expr);
+  if (match) return match.label;
+  return expr;
+}
+
 export default function JobForm({ projects, selectedProject, onClose, onCreated, prefill }: Props) {
   const [title, setTitle] = useState(prefill?.title || "");
   const [prompt, setPrompt] = useState(prefill?.prompt || "");
@@ -28,31 +44,61 @@ export default function JobForm({ projects, selectedProject, onClose, onCreated,
   const [showPermDetails, setShowPermDetails] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Scheduling state
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("now");
+  const [scheduledFor, setScheduledFor] = useState("");
+  const [cronExpression, setCronExpression] = useState(CRON_PRESETS[1].value);
+  const [scheduleName, setScheduleName] = useState("");
+
   const isSpawn = !!prefill?.assistantId;
+  const isRecurring = scheduleMode === "recurring";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim() || !prompt.trim()) return;
+    if (!prompt.trim()) return;
+    if (!isRecurring && !title.trim()) return;
+    if (isRecurring && !scheduleName.trim()) return;
     setSubmitting(true);
     try {
-      if (isSpawn && prefill?.assistantId) {
-        await api.assistants.spawn(prefill.assistantId, {
-          title: title.trim(),
+      if (isRecurring) {
+        await api.schedules.create({
+          name: scheduleName.trim(),
+          cron_expression: cronExpression,
+          title_template: title.trim() || scheduleName.trim() + " #{n}",
           prompt: prompt.trim(),
           model,
           work_dir: workDir.trim(),
           project_id: projectId || undefined,
           permissions,
+          assistant_id: prefill?.assistantId || undefined,
         });
       } else {
-        await api.jobs.create({
-          title: title.trim(),
-          prompt: prompt.trim(),
-          model,
-          work_dir: workDir.trim(),
-          project_id: projectId || undefined,
-          permissions,
-        });
+        const scheduled_for =
+          scheduleMode === "later" && scheduledFor
+            ? new Date(scheduledFor).toISOString()
+            : undefined;
+
+        if (isSpawn && prefill?.assistantId) {
+          await api.assistants.spawn(prefill.assistantId, {
+            title: title.trim(),
+            prompt: prompt.trim(),
+            model,
+            work_dir: workDir.trim(),
+            project_id: projectId || undefined,
+            permissions,
+            scheduled_for,
+          });
+        } else {
+          await api.jobs.create({
+            title: title.trim(),
+            prompt: prompt.trim(),
+            model,
+            work_dir: workDir.trim(),
+            project_id: projectId || undefined,
+            permissions,
+            scheduled_for,
+          });
+        }
       }
       onCreated();
       onClose();
@@ -63,19 +109,47 @@ export default function JobForm({ projects, selectedProject, onClose, onCreated,
     }
   }
 
+  function getSubmitLabel() {
+    if (submitting) return "Creating...";
+    if (isRecurring) return "Create Schedule";
+    if (isSpawn) return "Spawn Job";
+    if (scheduleMode === "later") return "Schedule Job";
+    return "Create Job";
+  }
+
+  const isValid =
+    prompt.trim() &&
+    (isRecurring ? scheduleName.trim() && cronExpression : title.trim()) &&
+    (scheduleMode !== "later" || scheduledFor);
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>{isSpawn ? "Spawn Job from Assistant" : "New Job"}</h2>
+        <h2>{isRecurring ? "New Recurring Schedule" : isSpawn ? "Spawn Job from Assistant" : "New Job"}</h2>
         <form onSubmit={handleSubmit}>
+          {isRecurring && (
+            <div className="form-group">
+              <label>Schedule Name</label>
+              <input
+                value={scheduleName}
+                onChange={(e) => setScheduleName(e.target.value)}
+                placeholder="e.g. Daily code review"
+                autoFocus
+              />
+            </div>
+          )}
+
           <div className="form-group">
-            <label>Title</label>
+            <label>{isRecurring ? "Job Title Template" : "Title"}</label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Brief description of the task"
-              autoFocus
+              placeholder={isRecurring ? "e.g. Code review {date} #{n}" : "Brief description of the task"}
+              autoFocus={!isRecurring}
             />
+            {isRecurring && (
+              <p className="field-hint">Use {"{date}"} for date and {"{n}"} for run number</p>
+            )}
           </div>
 
           <div className="form-group">
@@ -85,6 +159,68 @@ export default function JobForm({ projects, selectedProject, onClose, onCreated,
               onChange={(e) => setPrompt(e.target.value)}
               placeholder={isSpawn ? "Describe the specific task for this job..." : "Detailed instructions for the agent..."}
             />
+          </div>
+
+          <div className="form-group">
+            <label>Scheduling</label>
+            <div className="schedule-modes">
+              <button
+                type="button"
+                className={`btn btn-sm${scheduleMode === "now" ? " active" : ""}`}
+                onClick={() => setScheduleMode("now")}
+              >
+                Run Now
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm${scheduleMode === "later" ? " active" : ""}`}
+                onClick={() => setScheduleMode("later")}
+              >
+                Run Later
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm${scheduleMode === "recurring" ? " active" : ""}`}
+                onClick={() => setScheduleMode("recurring")}
+              >
+                Recurring
+              </button>
+            </div>
+
+            {scheduleMode === "later" && (
+              <div className="schedule-config">
+                <input
+                  type="datetime-local"
+                  value={scheduledFor}
+                  onChange={(e) => setScheduledFor(e.target.value)}
+                  min={new Date().toISOString().slice(0, 16)}
+                />
+              </div>
+            )}
+
+            {scheduleMode === "recurring" && (
+              <div className="schedule-config">
+                <div className="cron-presets">
+                  {CRON_PRESETS.map((p) => (
+                    <button
+                      key={p.value}
+                      type="button"
+                      className={`btn btn-sm${cronExpression === p.value ? " active" : ""}`}
+                      onClick={() => setCronExpression(p.value)}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  value={cronExpression}
+                  onChange={(e) => setCronExpression(e.target.value)}
+                  placeholder="* * * * * (min hour dom mon dow)"
+                  className="cron-input"
+                />
+                <p className="field-hint">Schedule: {describeCron(cronExpression)}</p>
+              </div>
+            )}
           </div>
 
           <div className="form-group">
@@ -187,9 +323,9 @@ export default function JobForm({ projects, selectedProject, onClose, onCreated,
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={submitting || !title.trim() || !prompt.trim()}
+              disabled={submitting || !isValid}
             >
-              {submitting ? "Creating..." : isSpawn ? "Spawn Job" : "Create Job"}
+              {getSubmitLabel()}
             </button>
           </div>
         </form>

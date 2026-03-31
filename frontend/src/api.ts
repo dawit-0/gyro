@@ -54,6 +54,27 @@ export interface Job {
   work_dir: string;
   project_id: string | null;
   permissions: Permissions;
+  scheduled_for: string | null;
+  schedule_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Schedule {
+  id: string;
+  name: string;
+  cron_expression: string;
+  title_template: string;
+  prompt: string;
+  model: string;
+  priority: number;
+  work_dir: string;
+  project_id: string | null;
+  permissions: Permissions;
+  assistant_id: string | null;
+  enabled: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -122,6 +143,7 @@ export const api = {
       work_dir?: string;
       project_id?: string;
       permissions?: Permissions;
+      scheduled_for?: string;
     }) => request<Job>("/jobs", { method: "POST", body: JSON.stringify(data) }),
     cancel: (id: string) =>
       request<{ ok: boolean }>(`/jobs/${id}/cancel`, { method: "POST" }),
@@ -190,11 +212,57 @@ export const api = {
         work_dir?: string;
         project_id?: string;
         permissions?: Permissions;
+        scheduled_for?: string;
       }
     ) =>
       request<Job>(`/assistants/${id}/spawn`, {
         method: "POST",
         body: JSON.stringify(data),
       }),
+  },
+  schedules: {
+    list: () => request<Schedule[]>("/schedules"),
+    get: (id: string) => request<Schedule>(`/schedules/${id}`),
+    create: (data: {
+      name: string;
+      cron_expression: string;
+      title_template: string;
+      prompt: string;
+      model?: string;
+      priority?: number;
+      work_dir?: string;
+      project_id?: string;
+      permissions?: Permissions;
+      assistant_id?: string;
+    }) =>
+      request<Schedule>("/schedules", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    update: (
+      id: string,
+      data: Partial<{
+        name: string;
+        cron_expression: string;
+        title_template: string;
+        prompt: string;
+        model: string;
+        priority: number;
+        work_dir: string;
+        project_id: string;
+        permissions: Permissions;
+        assistant_id: string;
+        enabled: boolean;
+      }>
+    ) =>
+      request<Schedule>(`/schedules/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) =>
+      request<{ ok: boolean }>(`/schedules/${id}`, { method: "DELETE" }),
+    trigger: (id: string) =>
+      request<Job>(`/schedules/${id}/trigger`, { method: "POST" }),
+    history: (id: string) => request<Job[]>(`/schedules/${id}/history`),
   },
 };

@@ -97,5 +97,38 @@ async def init_db():
         if "assistant_id" not in columns:
             await db.execute("ALTER TABLE jobs ADD COLUMN assistant_id TEXT REFERENCES assistants(id)")
             await db.commit()
+
+        # Migrate: add scheduled_for column if missing
+        if "scheduled_for" not in columns:
+            await db.execute("ALTER TABLE jobs ADD COLUMN scheduled_for TEXT")
+            await db.commit()
+
+        # Migrate: add schedule_id column if missing
+        if "schedule_id" not in columns:
+            await db.execute("ALTER TABLE jobs ADD COLUMN schedule_id TEXT REFERENCES schedules(id)")
+            await db.commit()
+
+        # Create schedules table
+        await db.executescript("""
+            CREATE TABLE IF NOT EXISTS schedules (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                cron_expression TEXT NOT NULL,
+                title_template TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                model TEXT DEFAULT 'claude-sonnet-4-20250514',
+                priority INTEGER DEFAULT 0,
+                work_dir TEXT DEFAULT '',
+                project_id TEXT REFERENCES projects(id),
+                permissions TEXT DEFAULT '{}',
+                assistant_id TEXT REFERENCES assistants(id),
+                enabled INTEGER DEFAULT 1,
+                last_run_at TEXT,
+                next_run_at TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+        """)
+        await db.commit()
     finally:
         await db.close()

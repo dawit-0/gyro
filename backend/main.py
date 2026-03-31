@@ -14,6 +14,7 @@ from routes.jobs import router as jobs_router
 from routes.agents import router as agents_router
 from routes.projects import router as projects_router
 from routes.assistants import router as assistants_router
+from routes.schedules import router as schedules_router
 
 # Socket.IO
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
@@ -42,6 +43,7 @@ app.include_router(jobs_router)
 app.include_router(agents_router)
 app.include_router(projects_router)
 app.include_router(assistants_router)
+app.include_router(schedules_router)
 
 
 # Cancel job endpoint that needs orchestrator

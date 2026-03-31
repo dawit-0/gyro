@@ -40,6 +40,7 @@ class JobCreate(BaseModel):
     work_dir: str = ""
     project_id: Optional[str] = None
     permissions: Optional[dict] = None
+    scheduled_for: Optional[str] = None
 
 
 class JobUpdate(BaseModel):
@@ -90,3 +91,31 @@ class SpawnJob(BaseModel):
     work_dir: Optional[str] = None
     project_id: Optional[str] = None
     permissions: Optional[dict] = None
+    scheduled_for: Optional[str] = None
+
+
+class ScheduleCreate(BaseModel):
+    name: str
+    cron_expression: str
+    title_template: str
+    prompt: str
+    model: str = "claude-sonnet-4-20250514"
+    priority: int = 0
+    work_dir: str = ""
+    project_id: Optional[str] = None
+    permissions: Optional[dict] = None
+    assistant_id: Optional[str] = None
+
+
+class ScheduleUpdate(BaseModel):
+    name: Optional[str] = None
+    cron_expression: Optional[str] = None
+    title_template: Optional[str] = None
+    prompt: Optional[str] = None
+    model: Optional[str] = None
+    priority: Optional[int] = None
+    work_dir: Optional[str] = None
+    project_id: Optional[str] = None
+    permissions: Optional[dict] = None
+    assistant_id: Optional[str] = None
+    enabled: Optional[bool] = None

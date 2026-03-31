@@ -61,9 +61,9 @@ async def create_job(body: JobCreate):
     db = await get_db()
     try:
         await db.execute(
-            """INSERT INTO jobs (id, title, prompt, model, priority, work_dir, project_id, permissions)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (job_id, body.title, body.prompt, body.model, body.priority, body.work_dir, body.project_id, permissions_json),
+            """INSERT INTO jobs (id, title, prompt, model, priority, work_dir, project_id, permissions, scheduled_for)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (job_id, body.title, body.prompt, body.model, body.priority, body.work_dir, body.project_id, permissions_json, body.scheduled_for),
         )
         await db.commit()
         cursor = await db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))

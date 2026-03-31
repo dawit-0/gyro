@@ -78,8 +78,17 @@ export default function AgentCard({ job, onCancel, onDelete }: Props) {
         onClick={() => setExpanded(!expanded)}
         style={{ cursor: "pointer" }}
       >
-        <h3>{job.title}</h3>
-        <span className={`status-pill ${job.status}`}>{job.status}</span>
+        <h3>
+          {job.schedule_id && <span className="recurring-badge" title="From recurring schedule">&#x21bb; </span>}
+          {job.title}
+        </h3>
+        {job.status === "queued" && job.scheduled_for && new Date(job.scheduled_for) > new Date() ? (
+          <span className="status-pill scheduled" title={new Date(job.scheduled_for).toLocaleString()}>
+            &#x1f552; Scheduled
+          </span>
+        ) : (
+          <span className={`status-pill ${job.status}`}>{job.status}</span>
+        )}
       </div>
 
       <div className="agent-card-meta">
@@ -104,7 +113,9 @@ export default function AgentCard({ job, onCancel, onDelete }: Props) {
           <div className="agent-card-output">
             {outputText || (
               <span style={{ color: "var(--text-muted)" }}>
-                {job.status === "queued"
+                {job.status === "queued" && job.scheduled_for && new Date(job.scheduled_for) > new Date()
+                  ? `Scheduled for ${new Date(job.scheduled_for).toLocaleString()}`
+                  : job.status === "queued"
                   ? "Waiting in queue..."
                   : job.status === "running"
                   ? "Agent starting..."

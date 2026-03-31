@@ -8,6 +8,7 @@ from typing import Optional
 
 import aiosqlite
 
+import cron as cron_parser
 from database import get_db
 from models import DEFAULT_PERMISSIONS
 
@@ -37,10 +38,61 @@ class Orchestrator:
     async def _poll_loop(self):
         while True:
             try:
+                await self._check_schedules()
                 await self._dispatch_queued_jobs()
             except Exception as e:
                 print(f"[orchestrator] poll error: {e}")
             await asyncio.sleep(POLL_INTERVAL)
+
+    async def _check_schedules(self):
+        """Create jobs from due recurring schedules."""
+        now = datetime.now(timezone.utc)
+        now_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        db = await get_db()
+        try:
+            cursor = await db.execute(
+                "SELECT * FROM schedules WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?",
+                (now_str,),
+            )
+            schedules = await cursor.fetchall()
+
+            for sched in schedules:
+                sched = dict(sched)
+                job_id = str(uuid.uuid4())
+
+                # Build title from template
+                run_count_cursor = await db.execute(
+                    "SELECT COUNT(*) FROM jobs WHERE schedule_id = ?", (sched["id"],)
+                )
+                run_count = (await run_count_cursor.fetchone())[0]
+                title = sched["title_template"].replace(
+                    "{date}", now.strftime("%Y-%m-%d")
+                ).replace("{n}", str(run_count + 1))
+
+                await db.execute(
+                    """INSERT INTO jobs (id, title, prompt, model, priority, work_dir, project_id, permissions, assistant_id, schedule_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        job_id, title, sched["prompt"], sched["model"],
+                        sched["priority"], sched["work_dir"], sched["project_id"],
+                        sched["permissions"], sched["assistant_id"], sched["id"],
+                    ),
+                )
+
+                # Advance next_run_at past now (skip missed windows)
+                next_run = cron_parser.next_run_after(sched["cron_expression"], now)
+                next_run_str = next_run.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+                await db.execute(
+                    "UPDATE schedules SET last_run_at = ?, next_run_at = ?, updated_at = datetime('now') WHERE id = ?",
+                    (now_str, next_run_str, sched["id"]),
+                )
+                await db.commit()
+
+                await self.sio.emit("job:updated", {"id": job_id, "status": "queued"})
+                await self.sio.emit("schedule:triggered", {"id": sched["id"], "job_id": job_id})
+        finally:
+            await db.close()
 
     async def _dispatch_queued_jobs(self):
         if len(self.running_agents) >= MAX_CONCURRENT_AGENTS:
@@ -50,7 +102,9 @@ class Orchestrator:
         try:
             slots = MAX_CONCURRENT_AGENTS - len(self.running_agents)
             cursor = await db.execute(
-                "SELECT * FROM jobs WHERE status = 'queued' ORDER BY priority DESC, created_at ASC LIMIT ?",
+                """SELECT * FROM jobs WHERE status = 'queued'
+                   AND (scheduled_for IS NULL OR scheduled_for <= datetime('now'))
+                   ORDER BY priority DESC, created_at ASC LIMIT ?""",
                 (slots,),
             )
             jobs = await cursor.fetchall()

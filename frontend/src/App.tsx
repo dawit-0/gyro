@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { api, Job, Project, Assistant, Permissions } from "./api";
+import { api, Job, Project, Assistant, Schedule, Permissions } from "./api";
 import { socket } from "./socket";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
@@ -7,6 +7,7 @@ import AgentGrid from "./components/AgentGrid";
 import JobForm from "./components/JobForm";
 import AssistantList from "./components/AssistantList";
 import AssistantForm from "./components/AssistantForm";
+import ScheduleList from "./components/ScheduleList";
 
 export interface JobPrefill {
   title: string;
@@ -23,8 +24,9 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [showJobForm, setShowJobForm] = useState(false);
-  const [view, setView] = useState<"jobs" | "assistants">("jobs");
+  const [view, setView] = useState<"jobs" | "assistants" | "schedules">("jobs");
   const [assistants, setAssistants] = useState<Assistant[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [showAssistantForm, setShowAssistantForm] = useState(false);
   const [editingAssistant, setEditingAssistant] = useState<Assistant | null>(null);
   const [jobPrefill, setJobPrefill] = useState<Partial<JobPrefill> | null>(null);
@@ -44,11 +46,17 @@ export default function App() {
     setAssistants(data);
   }, []);
 
+  const loadSchedules = useCallback(async () => {
+    const data = await api.schedules.list();
+    setSchedules(data);
+  }, []);
+
   useEffect(() => {
     loadJobs();
     loadProjects();
     loadAssistants();
-  }, [loadJobs, loadProjects, loadAssistants]);
+    loadSchedules();
+  }, [loadJobs, loadProjects, loadAssistants, loadSchedules]);
 
   // Real-time updates
   useEffect(() => {
@@ -120,6 +128,10 @@ export default function App() {
           setEditingAssistant(null);
           setShowAssistantForm(true);
         }}
+        onNewSchedule={() => {
+          setJobPrefill(null);
+          setShowJobForm(true);
+        }}
       />
       <div className="main-layout">
         <Sidebar
@@ -140,7 +152,7 @@ export default function App() {
                 setShowJobForm(true);
               }}
             />
-          ) : (
+          ) : view === "assistants" ? (
             <AssistantList
               assistants={assistants}
               onSpawn={handleSpawnFromAssistant}
@@ -149,6 +161,18 @@ export default function App() {
               onNewAssistant={() => {
                 setEditingAssistant(null);
                 setShowAssistantForm(true);
+              }}
+            />
+          ) : (
+            <ScheduleList
+              schedules={schedules}
+              onRefresh={() => {
+                loadSchedules();
+                loadJobs();
+              }}
+              onNewSchedule={() => {
+                setJobPrefill(null);
+                setShowJobForm(true);
               }}
             />
           )}

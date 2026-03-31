@@ -3,17 +3,21 @@ import { Job } from "../api";
 
 interface Props {
   jobs: Job[];
-  view: "jobs" | "assistants";
-  onViewChange: (view: "jobs" | "assistants") => void;
+  view: "jobs" | "assistants" | "schedules";
+  onViewChange: (view: "jobs" | "assistants" | "schedules") => void;
   onNewJob: () => void;
   onNewAssistant: () => void;
+  onNewSchedule: () => void;
 }
 
-export default function Header({ jobs, view, onViewChange, onNewJob, onNewAssistant }: Props) {
+export default function Header({ jobs, view, onViewChange, onNewJob, onNewAssistant, onNewSchedule }: Props) {
   const running = jobs.filter((j) => j.status === "running").length;
   const queued = jobs.filter((j) => j.status === "queued").length;
   const done = jobs.filter((j) => j.status === "done").length;
   const failed = jobs.filter((j) => j.status === "failed").length;
+  const scheduled = jobs.filter(
+    (j) => j.status === "queued" && j.scheduled_for && new Date(j.scheduled_for) > new Date()
+  ).length;
 
   return (
     <header className="header">
@@ -34,6 +38,12 @@ export default function Header({ jobs, view, onViewChange, onNewJob, onNewAssist
           >
             Assistants
           </button>
+          <button
+            className={`header-tab${view === "schedules" ? " active" : ""}`}
+            onClick={() => onViewChange("schedules")}
+          >
+            Schedules
+          </button>
         </div>
       </div>
       {view === "jobs" && (
@@ -45,7 +55,12 @@ export default function Header({ jobs, view, onViewChange, onNewJob, onNewAssist
           )}
           {queued > 0 && (
             <span className="stat-badge">
-              <span className="dot queued" /> {queued} queued
+              <span className="dot queued" /> {queued - scheduled} queued
+            </span>
+          )}
+          {scheduled > 0 && (
+            <span className="stat-badge">
+              <span className="dot scheduled" /> {scheduled} scheduled
             </span>
           )}
           <span className="stat-badge">
@@ -63,9 +78,13 @@ export default function Header({ jobs, view, onViewChange, onNewJob, onNewAssist
           <button className="btn btn-primary" onClick={onNewJob}>
             + New Job
           </button>
-        ) : (
+        ) : view === "assistants" ? (
           <button className="btn btn-primary" onClick={onNewAssistant}>
             + New Assistant
+          </button>
+        ) : (
+          <button className="btn btn-primary" onClick={onNewSchedule}>
+            + New Schedule
           </button>
         )}
       </div>
