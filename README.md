@@ -1,6 +1,6 @@
-# <span style="color: #228B22; text-transform: uppercase;">gyro</span>
+# <span style="color: #228B22;">GYRO</span>
 
-A local webapp for orchestrating Claude Code agents in parallel.
+A local webapp for orchestrating Claude Code agents.
 
 ## Architecture
 
@@ -42,12 +42,29 @@ The frontend dev server starts on `http://localhost:5173` and proxies API/WebSoc
 
 Navigate to **http://localhost:5173** in your browser.
 
+## Features
+
+### Assistants
+
+Reusable agent templates that bundle instructions, context, and default settings. Create an assistant once, then spawn jobs from it without re-entering configuration each time. Assistants support custom instructions (system prompts), attached context (files, URLs, or text), and default model/permissions/working directory.
+
+### Permissions
+
+Control what tools each agent can access. Choose from three presets or customize individually:
+
+- **Read Only** — File read only (Read, Glob, Grep)
+- **Standard** — File read/write + bash (default)
+- **Full Access** — All tools including web search and MCP
+
+Permissions are enforced via the Claude CLI `--allowedTools` flag.
+
 ## Usage
 
 1. **Create a Project** (optional) — Use the sidebar to organize jobs by project.
-2. **Create a Job** — Click "+ New Job", enter a title, prompt, select a model, and optionally set a working directory.
-3. **Watch it run** — The orchestrator picks up queued jobs (up to 5 concurrent), spawns a Claude agent, and streams output in real-time to the agent card.
-4. **Cancel / Remove** — Cancel running jobs or remove completed ones from the dashboard.
+2. **Create an Assistant** (optional) — Define a reusable template with instructions, context, and defaults.
+3. **Create a Job** — Click "+ New Job", enter a title, prompt, select a model, set permissions, and optionally set a working directory. Or spawn a job directly from an assistant.
+4. **Watch it run** — The orchestrator picks up queued jobs (up to 5 concurrent), spawns a Claude agent, and streams output in real-time to the agent card.
+5. **Cancel / Remove** — Cancel running jobs or remove completed ones from the dashboard.
 
 ## Configuration
 
