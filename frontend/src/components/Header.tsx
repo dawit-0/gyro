@@ -19,8 +19,7 @@ export default function Header({ jobs, view, onViewChange, onNewJob, onNewAssist
     <header className="header">
       <div className="header-left">
         <div className="header-logo">
-          <img src="/gyro_new.png" alt="gyro" className="header-logo-icon" />
-          gyro
+          GYRO
         </div>
         <div className="header-tabs">
           <button

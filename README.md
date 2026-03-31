@@ -1,4 +1,4 @@
-# <img src="frontend/public/gyro_new.png" width="32" height="32" align="center" /> gyro
+# <span style="color: #228B22; text-transform: uppercase;">gyro</span>
 
 A local webapp for orchestrating Claude Code agents in parallel.
 
