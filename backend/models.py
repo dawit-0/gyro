@@ -41,6 +41,7 @@ class JobCreate(BaseModel):
     project_id: Optional[str] = None
     permissions: Optional[dict] = None
     scheduled_for: Optional[str] = None
+    parent_job_id: Optional[str] = None
 
 
 class JobUpdate(BaseModel):
@@ -92,6 +93,7 @@ class SpawnJob(BaseModel):
     project_id: Optional[str] = None
     permissions: Optional[dict] = None
     scheduled_for: Optional[str] = None
+    parent_job_id: Optional[str] = None
 
 
 class ScheduleCreate(BaseModel):

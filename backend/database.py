@@ -108,6 +108,12 @@ async def init_db():
             await db.execute("ALTER TABLE jobs ADD COLUMN schedule_id TEXT REFERENCES schedules(id)")
             await db.commit()
 
+        # Migrate: add parent_job_id column if missing
+        if "parent_job_id" not in columns:
+            await db.execute("ALTER TABLE jobs ADD COLUMN parent_job_id TEXT REFERENCES jobs(id)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_jobs_parent ON jobs(parent_job_id)")
+            await db.commit()
+
         # Create schedules table
         await db.executescript("""
             CREATE TABLE IF NOT EXISTS schedules (

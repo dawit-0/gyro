@@ -17,6 +17,7 @@ export interface JobPrefill {
   projectId: string;
   permissions: Permissions;
   assistantId: string;
+  parentJobId: string;
 }
 
 export default function App() {
@@ -181,6 +182,7 @@ export default function App() {
       {showJobForm && (
         <JobForm
           projects={projects}
+          jobs={jobs}
           selectedProject={selectedProject}
           onClose={() => {
             setShowJobForm(false);

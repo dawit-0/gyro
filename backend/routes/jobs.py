@@ -1,6 +1,7 @@
 import json
 import uuid
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from database import get_db
 from models import JobCreate, JobUpdate, DEFAULT_PERMISSIONS
 
@@ -8,7 +9,7 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
 @router.get("")
-async def list_jobs(project_id: str = None, status: str = None):
+async def list_jobs(project_id: str = None, status: str = None, parent_job_id: str = None):
     db = await get_db()
     try:
         query = "SELECT * FROM jobs WHERE 1=1"
@@ -19,6 +20,9 @@ async def list_jobs(project_id: str = None, status: str = None):
         if status:
             query += " AND status = ?"
             params.append(status)
+        if parent_job_id:
+            query += " AND parent_job_id = ?"
+            params.append(parent_job_id)
         query += " ORDER BY created_at DESC"
         cursor = await db.execute(query, params)
         rows = await cursor.fetchall()
@@ -53,6 +57,22 @@ async def get_job(job_id: str):
         await db.close()
 
 
+async def _check_circular_dependency(db, job_id: str, parent_job_id: str) -> bool:
+    """Return True if setting parent_job_id would create a cycle."""
+    current = parent_job_id
+    visited = {job_id}
+    while current:
+        if current in visited:
+            return True
+        visited.add(current)
+        cursor = await db.execute("SELECT parent_job_id FROM jobs WHERE id = ?", (current,))
+        row = await cursor.fetchone()
+        if not row:
+            break
+        current = row["parent_job_id"]
+    return False
+
+
 @router.post("")
 async def create_job(body: JobCreate):
     job_id = str(uuid.uuid4())
@@ -60,10 +80,24 @@ async def create_job(body: JobCreate):
     permissions_json = json.dumps(permissions)
     db = await get_db()
     try:
+        # Validate parent job
+        initial_status = "queued"
+        if body.parent_job_id:
+            if body.parent_job_id == job_id:
+                return JSONResponse({"error": "job cannot be its own parent"}, status_code=400)
+            cursor = await db.execute("SELECT id, status FROM jobs WHERE id = ?", (body.parent_job_id,))
+            parent = await cursor.fetchone()
+            if not parent:
+                return JSONResponse({"error": "parent job not found"}, status_code=404)
+            if await _check_circular_dependency(db, job_id, body.parent_job_id):
+                return JSONResponse({"error": "circular dependency detected"}, status_code=400)
+            if parent["status"] in ("failed", "cancelled"):
+                initial_status = "cancelled"
+
         await db.execute(
-            """INSERT INTO jobs (id, title, prompt, model, priority, work_dir, project_id, permissions, scheduled_for)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (job_id, body.title, body.prompt, body.model, body.priority, body.work_dir, body.project_id, permissions_json, body.scheduled_for),
+            """INSERT INTO jobs (id, title, prompt, model, priority, work_dir, project_id, permissions, scheduled_for, parent_job_id, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (job_id, body.title, body.prompt, body.model, body.priority, body.work_dir, body.project_id, permissions_json, body.scheduled_for, body.parent_job_id, initial_status),
         )
         await db.commit()
         cursor = await db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
@@ -103,10 +137,34 @@ async def update_job(job_id: str, body: JobUpdate):
 async def delete_job(job_id: str):
     db = await get_db()
     try:
+        # Unlink children so they become independent
+        await db.execute("UPDATE jobs SET parent_job_id = NULL WHERE parent_job_id = ?", (job_id,))
         await db.execute("DELETE FROM agent_output WHERE agent_id IN (SELECT id FROM agents WHERE job_id = ?)", (job_id,))
         await db.execute("DELETE FROM agents WHERE job_id = ?", (job_id,))
         await db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
         await db.commit()
         return {"ok": True}
+    finally:
+        await db.close()
+
+
+@router.get("/{job_id}/children")
+async def get_job_children(job_id: str):
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM jobs WHERE parent_job_id = ? ORDER BY created_at ASC",
+            (job_id,),
+        )
+        rows = await cursor.fetchall()
+        results = []
+        for r in rows:
+            job = dict(r)
+            try:
+                job["permissions"] = json.loads(job.get("permissions") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                job["permissions"] = DEFAULT_PERMISSIONS
+            results.append(job)
+        return results
     finally:
         await db.close()

@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import { api, Project, Permissions, PERMISSION_PRESETS } from "../api";
+import { api, Job, Project, Permissions, PERMISSION_PRESETS } from "../api";
 import { JobPrefill } from "../App";
 
 interface Props {
   projects: Project[];
+  jobs: Job[];
   selectedProject: string | null;
   onClose: () => void;
   onCreated: () => void;
@@ -32,7 +33,7 @@ function describeCron(expr: string): string {
   return expr;
 }
 
-export default function JobForm({ projects, selectedProject, onClose, onCreated, prefill }: Props) {
+export default function JobForm({ projects, jobs, selectedProject, onClose, onCreated, prefill }: Props) {
   const [title, setTitle] = useState(prefill?.title || "");
   const [prompt, setPrompt] = useState(prefill?.prompt || "");
   const [model, setModel] = useState(prefill?.model || MODELS[0].value);
@@ -43,6 +44,9 @@ export default function JobForm({ projects, selectedProject, onClose, onCreated,
   );
   const [showPermDetails, setShowPermDetails] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Dependency state
+  const [parentJobId, setParentJobId] = useState(prefill?.parentJobId || "");
 
   // Scheduling state
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("now");
@@ -87,6 +91,7 @@ export default function JobForm({ projects, selectedProject, onClose, onCreated,
             project_id: projectId || undefined,
             permissions,
             scheduled_for,
+            parent_job_id: parentJobId || undefined,
           });
         } else {
           await api.jobs.create({
@@ -97,6 +102,7 @@ export default function JobForm({ projects, selectedProject, onClose, onCreated,
             project_id: projectId || undefined,
             permissions,
             scheduled_for,
+            parent_job_id: parentJobId || undefined,
           });
         }
       }
@@ -254,6 +260,23 @@ export default function JobForm({ projects, selectedProject, onClose, onCreated,
               ))}
             </select>
           </div>
+
+          {!isRecurring && jobs.length > 0 && (
+            <div className="form-group">
+              <label>Depends On (optional)</label>
+              <select value={parentJobId} onChange={(e) => setParentJobId(e.target.value)}>
+                <option value="">None</option>
+                {jobs.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.title} ({j.status})
+                  </option>
+                ))}
+              </select>
+              {parentJobId && (
+                <p className="field-hint">This job will run after the selected parent job succeeds.</p>
+              )}
+            </div>
+          )}
 
           <div className="form-group">
             <label>Permissions</label>

@@ -4,11 +4,12 @@ import { socket } from "../socket";
 
 interface Props {
   job: Job;
+  jobs: Job[];
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
 }
 
-export default function AgentCard({ job, onCancel, onDelete }: Props) {
+export default function AgentCard({ job, jobs, onCancel, onDelete }: Props) {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [output, setOutput] = useState<AgentOutput[]>([]);
   const [expanded, setExpanded] = useState(job.status === "running");
@@ -86,6 +87,10 @@ export default function AgentCard({ job, onCancel, onDelete }: Props) {
           <span className="status-pill scheduled" title={new Date(job.scheduled_for).toLocaleString()}>
             &#x1f552; Scheduled
           </span>
+        ) : job.status === "queued" && job.parent_job_id ? (
+          <span className="status-pill queued" title="Waiting for parent job to complete">
+            &#x23f3; Waiting
+          </span>
         ) : (
           <span className={`status-pill ${job.status}`}>{job.status}</span>
         )}
@@ -106,6 +111,14 @@ export default function AgentCard({ job, onCancel, onDelete }: Props) {
               : "custom"}
           </span>
         )}
+        {job.parent_job_id && (() => {
+          const parent = jobs.find((j) => j.id === job.parent_job_id);
+          return (
+            <span className="dependency-badge" title={parent ? `Depends on: ${parent.title}` : "Depends on parent job"}>
+              &#x21b3; {parent ? parent.title : "parent"}
+            </span>
+          );
+        })()}
       </div>
 
       {expanded && (
@@ -115,6 +128,8 @@ export default function AgentCard({ job, onCancel, onDelete }: Props) {
               <span style={{ color: "var(--text-muted)" }}>
                 {job.status === "queued" && job.scheduled_for && new Date(job.scheduled_for) > new Date()
                   ? `Scheduled for ${new Date(job.scheduled_for).toLocaleString()}`
+                  : job.status === "queued" && job.parent_job_id
+                  ? "Waiting on parent job..."
                   : job.status === "queued"
                   ? "Waiting in queue..."
                   : job.status === "running"

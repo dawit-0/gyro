@@ -40,6 +40,7 @@ export default function AgentGrid({ jobs, onCancel, onDelete, onNewJob }: Props)
         <AgentCard
           key={job.id}
           job={job}
+          jobs={jobs}
           onCancel={onCancel}
           onDelete={onDelete}
         />

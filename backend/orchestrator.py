@@ -104,6 +104,8 @@ class Orchestrator:
             cursor = await db.execute(
                 """SELECT * FROM jobs WHERE status = 'queued'
                    AND (scheduled_for IS NULL OR scheduled_for <= datetime('now'))
+                   AND (parent_job_id IS NULL
+                        OR parent_job_id IN (SELECT id FROM jobs WHERE status = 'done'))
                    ORDER BY priority DESC, created_at ASC LIMIT ?""",
                 (slots,),
             )
@@ -275,6 +277,8 @@ class Orchestrator:
                     "UPDATE jobs SET status = ?, updated_at = datetime('now') WHERE id = ?",
                     (status, job_id),
                 )
+                if status == "failed":
+                    await self._cascade_cancel_children(db, job_id)
                 await db.commit()
             finally:
                 await db.close()
@@ -301,6 +305,7 @@ class Orchestrator:
                     "UPDATE jobs SET status = 'failed', updated_at = datetime('now') WHERE id = ?",
                     (job_id,),
                 )
+                await self._cascade_cancel_children(db, job_id)
                 await db.commit()
             finally:
                 await db.close()
@@ -314,6 +319,22 @@ class Orchestrator:
             await self.sio.emit("job:updated", {"id": job_id, "status": "failed"})
         finally:
             self.running_agents.pop(agent_id, None)
+
+    async def _cascade_cancel_children(self, db: aiosqlite.Connection, parent_job_id: str):
+        """Recursively cancel all queued children of a failed/cancelled parent."""
+        cursor = await db.execute(
+            "SELECT id FROM jobs WHERE parent_job_id = ? AND status = 'queued'",
+            (parent_job_id,),
+        )
+        children = await cursor.fetchall()
+        for child in children:
+            child_id = child["id"]
+            await db.execute(
+                "UPDATE jobs SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?",
+                (child_id,),
+            )
+            await self.sio.emit("job:updated", {"id": child_id, "status": "cancelled"})
+            await self._cascade_cancel_children(db, child_id)
 
     async def cancel_job(self, job_id: str):
         db = await get_db()
@@ -344,6 +365,7 @@ class Orchestrator:
                 "UPDATE jobs SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?",
                 (job_id,),
             )
+            await self._cascade_cancel_children(db, job_id)
             await db.commit()
         finally:
             await db.close()

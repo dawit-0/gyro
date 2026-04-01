@@ -56,6 +56,7 @@ export interface Job {
   permissions: Permissions;
   scheduled_for: string | null;
   schedule_id: string | null;
+  parent_job_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -144,11 +145,13 @@ export const api = {
       project_id?: string;
       permissions?: Permissions;
       scheduled_for?: string;
+      parent_job_id?: string;
     }) => request<Job>("/jobs", { method: "POST", body: JSON.stringify(data) }),
     cancel: (id: string) =>
       request<{ ok: boolean }>(`/jobs/${id}/cancel`, { method: "POST" }),
     delete: (id: string) =>
       request<{ ok: boolean }>(`/jobs/${id}`, { method: "DELETE" }),
+    children: (id: string) => request<Job[]>(`/jobs/${id}/children`),
   },
   agents: {
     list: (jobId?: string) =>
@@ -213,6 +216,7 @@ export const api = {
         project_id?: string;
         permissions?: Permissions;
         scheduled_for?: string;
+        parent_job_id?: string;
       }
     ) =>
       request<Job>(`/assistants/${id}/spawn`, {

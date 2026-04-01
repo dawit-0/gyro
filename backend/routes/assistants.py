@@ -153,9 +153,9 @@ async def spawn_job(assistant_id: str, body: SpawnJob):
         job_id = str(uuid.uuid4())
         permissions_json = json.dumps(permissions)
         await db.execute(
-            """INSERT INTO jobs (id, title, prompt, model, priority, work_dir, project_id, permissions, assistant_id, scheduled_for)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (job_id, body.title, merged_prompt, model, body.priority, work_dir, project_id, permissions_json, assistant_id, body.scheduled_for),
+            """INSERT INTO jobs (id, title, prompt, model, priority, work_dir, project_id, permissions, assistant_id, scheduled_for, parent_job_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (job_id, body.title, merged_prompt, model, body.priority, work_dir, project_id, permissions_json, assistant_id, body.scheduled_for, body.parent_job_id),
         )
         await db.commit()
         cursor = await db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
