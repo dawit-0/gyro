@@ -114,6 +114,25 @@ async def init_db():
             await db.execute("CREATE INDEX IF NOT EXISTS idx_jobs_parent ON jobs(parent_job_id)")
             await db.commit()
 
+        # Migrate: create job_dependencies junction table for multi-parent DAG
+        await db.executescript("""
+            CREATE TABLE IF NOT EXISTS job_dependencies (
+                job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+                depends_on_job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+                PRIMARY KEY (job_id, depends_on_job_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_job_deps_job ON job_dependencies(job_id);
+            CREATE INDEX IF NOT EXISTS idx_job_deps_depends ON job_dependencies(depends_on_job_id);
+        """)
+        await db.commit()
+
+        # Migrate existing parent_job_id data into job_dependencies
+        await db.execute("""
+            INSERT OR IGNORE INTO job_dependencies (job_id, depends_on_job_id)
+            SELECT id, parent_job_id FROM jobs WHERE parent_job_id IS NOT NULL
+        """)
+        await db.commit()
+
         # Create schedules table
         await db.executescript("""
             CREATE TABLE IF NOT EXISTS schedules (

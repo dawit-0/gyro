@@ -61,6 +61,25 @@ export interface Job {
   updated_at: string;
 }
 
+export interface DagNode {
+  id: string;
+  title: string;
+  status: string;
+  model: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DagEdge {
+  source: string;
+  target: string;
+}
+
+export interface DagGraph {
+  nodes: DagNode[];
+  edges: DagEdge[];
+}
+
 export interface Schedule {
   id: string;
   name: string;
@@ -146,12 +165,24 @@ export const api = {
       permissions?: Permissions;
       scheduled_for?: string;
       parent_job_id?: string;
+      depends_on?: string[];
     }) => request<Job>("/jobs", { method: "POST", body: JSON.stringify(data) }),
     cancel: (id: string) =>
       request<{ ok: boolean }>(`/jobs/${id}/cancel`, { method: "POST" }),
     delete: (id: string) =>
       request<{ ok: boolean }>(`/jobs/${id}`, { method: "DELETE" }),
     children: (id: string) => request<Job[]>(`/jobs/${id}/children`),
+    dag: (projectId?: string) =>
+      request<DagGraph>(`/jobs/dag${projectId ? `?project_id=${projectId}` : ""}`),
+    addDependencies: (jobId: string, dependsOn: string[]) =>
+      request<{ ok: boolean }>(`/jobs/${jobId}/dependencies`, {
+        method: "POST",
+        body: JSON.stringify({ depends_on: dependsOn }),
+      }),
+    removeDependency: (jobId: string, depId: string) =>
+      request<{ ok: boolean }>(`/jobs/${jobId}/dependencies/${depId}`, {
+        method: "DELETE",
+      }),
   },
   agents: {
     list: (jobId?: string) =>
@@ -217,6 +248,7 @@ export const api = {
         permissions?: Permissions;
         scheduled_for?: string;
         parent_job_id?: string;
+        depends_on?: string[];
       }
     ) =>
       request<Job>(`/assistants/${id}/spawn`, {

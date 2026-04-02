@@ -8,6 +8,7 @@ import JobForm from "./components/JobForm";
 import AssistantList from "./components/AssistantList";
 import AssistantForm from "./components/AssistantForm";
 import ScheduleList from "./components/ScheduleList";
+import AgentFlowView from "./components/AgentFlowView";
 
 export interface JobPrefill {
   title: string;
@@ -25,7 +26,7 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [showJobForm, setShowJobForm] = useState(false);
-  const [view, setView] = useState<"jobs" | "assistants" | "schedules">("jobs");
+  const [view, setView] = useState<"jobs" | "assistants" | "schedules" | "agentflow">("jobs");
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [showAssistantForm, setShowAssistantForm] = useState(false);
@@ -163,6 +164,12 @@ export default function App() {
                 setEditingAssistant(null);
                 setShowAssistantForm(true);
               }}
+            />
+          ) : view === "agentflow" ? (
+            <AgentFlowView
+              selectedProject={selectedProject}
+              onCancel={handleCancel}
+              onDelete={handleDelete}
             />
           ) : (
             <ScheduleList

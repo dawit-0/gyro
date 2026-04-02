@@ -45,8 +45,10 @@ export default function JobForm({ projects, jobs, selectedProject, onClose, onCr
   const [showPermDetails, setShowPermDetails] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Dependency state
-  const [parentJobId, setParentJobId] = useState(prefill?.parentJobId || "");
+  // Dependency state (multi-select)
+  const [dependsOn, setDependsOn] = useState<string[]>(
+    prefill?.parentJobId ? [prefill.parentJobId] : []
+  );
 
   // Scheduling state
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("now");
@@ -91,7 +93,7 @@ export default function JobForm({ projects, jobs, selectedProject, onClose, onCr
             project_id: projectId || undefined,
             permissions,
             scheduled_for,
-            parent_job_id: parentJobId || undefined,
+            depends_on: dependsOn.length > 0 ? dependsOn : undefined,
           });
         } else {
           await api.jobs.create({
@@ -102,7 +104,7 @@ export default function JobForm({ projects, jobs, selectedProject, onClose, onCr
             project_id: projectId || undefined,
             permissions,
             scheduled_for,
-            parent_job_id: parentJobId || undefined,
+            depends_on: dependsOn.length > 0 ? dependsOn : undefined,
           });
         }
       }
@@ -264,16 +266,27 @@ export default function JobForm({ projects, jobs, selectedProject, onClose, onCr
           {!isRecurring && jobs.length > 0 && (
             <div className="form-group">
               <label>Depends On (optional)</label>
-              <select value={parentJobId} onChange={(e) => setParentJobId(e.target.value)}>
-                <option value="">None</option>
+              <div className="depends-on-list">
                 {jobs.map((j) => (
-                  <option key={j.id} value={j.id}>
-                    {j.title} ({j.status})
-                  </option>
+                  <label key={j.id} className="permission-toggle">
+                    <input
+                      type="checkbox"
+                      checked={dependsOn.includes(j.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setDependsOn([...dependsOn, j.id]);
+                        } else {
+                          setDependsOn(dependsOn.filter((id) => id !== j.id));
+                        }
+                      }}
+                    />
+                    <span>{j.title}</span>
+                    <span className={`flow-node-status ${j.status}`}>{j.status}</span>
+                  </label>
                 ))}
-              </select>
-              {parentJobId && (
-                <p className="field-hint">This job will run after the selected parent job succeeds.</p>
+              </div>
+              {dependsOn.length > 0 && (
+                <p className="field-hint">This job will run after all selected jobs succeed.</p>
               )}
             </div>
           )}

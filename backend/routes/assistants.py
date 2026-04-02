@@ -152,11 +152,26 @@ async def spawn_job(assistant_id: str, body: SpawnJob):
 
         job_id = str(uuid.uuid4())
         permissions_json = json.dumps(permissions)
+        # Resolve depends_on
+        depends_on = list(body.depends_on or [])
+        if body.parent_job_id and body.parent_job_id not in depends_on:
+            depends_on.append(body.parent_job_id)
+        parent_job_id = depends_on[0] if depends_on else body.parent_job_id
+
         await db.execute(
             """INSERT INTO jobs (id, title, prompt, model, priority, work_dir, project_id, permissions, assistant_id, scheduled_for, parent_job_id)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (job_id, body.title, merged_prompt, model, body.priority, work_dir, project_id, permissions_json, assistant_id, body.scheduled_for, body.parent_job_id),
+            (job_id, body.title, merged_prompt, model, body.priority, work_dir, project_id, permissions_json, assistant_id, body.scheduled_for, parent_job_id),
         )
+
+        # Insert dependency rows
+        for dep_id in depends_on:
+            if dep_id != job_id:
+                await db.execute(
+                    "INSERT OR IGNORE INTO job_dependencies (job_id, depends_on_job_id) VALUES (?, ?)",
+                    (job_id, dep_id),
+                )
+
         await db.commit()
         cursor = await db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
         job = dict(await cursor.fetchone())

@@ -104,6 +104,11 @@ class Orchestrator:
             cursor = await db.execute(
                 """SELECT * FROM jobs WHERE status = 'queued'
                    AND (scheduled_for IS NULL OR scheduled_for <= datetime('now'))
+                   AND NOT EXISTS (
+                       SELECT 1 FROM job_dependencies jd
+                       JOIN jobs dep ON dep.id = jd.depends_on_job_id
+                       WHERE jd.job_id = jobs.id AND dep.status != 'done'
+                   )
                    AND (parent_job_id IS NULL
                         OR parent_job_id IN (SELECT id FROM jobs WHERE status = 'done'))
                    ORDER BY priority DESC, created_at ASC LIMIT ?""",
@@ -321,14 +326,23 @@ class Orchestrator:
             self.running_agents.pop(agent_id, None)
 
     async def _cascade_cancel_children(self, db: aiosqlite.Connection, parent_job_id: str):
-        """Recursively cancel all queued children of a failed/cancelled parent."""
+        """Recursively cancel all queued downstream jobs of a failed/cancelled parent."""
+        # Find jobs that depend on this parent via job_dependencies
         cursor = await db.execute(
-            "SELECT id FROM jobs WHERE parent_job_id = ? AND status = 'queued'",
+            """SELECT DISTINCT jd.job_id FROM job_dependencies jd
+               JOIN jobs j ON j.id = jd.job_id
+               WHERE jd.depends_on_job_id = ? AND j.status = 'queued'""",
             (parent_job_id,),
         )
         children = await cursor.fetchall()
-        for child in children:
-            child_id = child["id"]
+        # Also check legacy parent_job_id column
+        cursor2 = await db.execute(
+            "SELECT id FROM jobs WHERE parent_job_id = ? AND status = 'queued'",
+            (parent_job_id,),
+        )
+        legacy_children = await cursor2.fetchall()
+        child_ids = {c["job_id"] for c in children} | {c["id"] for c in legacy_children}
+        for child_id in child_ids:
             await db.execute(
                 "UPDATE jobs SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?",
                 (child_id,),

@@ -42,6 +42,7 @@ class JobCreate(BaseModel):
     permissions: Optional[dict] = None
     scheduled_for: Optional[str] = None
     parent_job_id: Optional[str] = None
+    depends_on: Optional[list[str]] = None
 
 
 class JobUpdate(BaseModel):
@@ -94,6 +95,11 @@ class SpawnJob(BaseModel):
     permissions: Optional[dict] = None
     scheduled_for: Optional[str] = None
     parent_job_id: Optional[str] = None
+    depends_on: Optional[list[str]] = None
+
+
+class DependencyAdd(BaseModel):
+    depends_on: list[str]
 
 
 class ScheduleCreate(BaseModel):

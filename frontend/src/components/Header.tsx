@@ -3,8 +3,8 @@ import { Job } from "../api";
 
 interface Props {
   jobs: Job[];
-  view: "jobs" | "assistants" | "schedules";
-  onViewChange: (view: "jobs" | "assistants" | "schedules") => void;
+  view: "jobs" | "assistants" | "schedules" | "agentflow";
+  onViewChange: (view: "jobs" | "assistants" | "schedules" | "agentflow") => void;
   onNewJob: () => void;
   onNewAssistant: () => void;
   onNewSchedule: () => void;
@@ -39,6 +39,12 @@ export default function Header({ jobs, view, onViewChange, onNewJob, onNewAssist
             Assistants
           </button>
           <button
+            className={`header-tab${view === "agentflow" ? " active" : ""}`}
+            onClick={() => onViewChange("agentflow")}
+          >
+            AgentFlow
+          </button>
+          <button
             className={`header-tab${view === "schedules" ? " active" : ""}`}
             onClick={() => onViewChange("schedules")}
           >
@@ -46,7 +52,7 @@ export default function Header({ jobs, view, onViewChange, onNewJob, onNewAssist
           </button>
         </div>
       </div>
-      {view === "jobs" && (
+      {(view === "jobs" || view === "agentflow") && (
         <div className="header-stats">
           {running > 0 && (
             <span className="stat-badge">
@@ -74,7 +80,7 @@ export default function Header({ jobs, view, onViewChange, onNewJob, onNewAssist
         </div>
       )}
       <div className="header-actions">
-        {view === "jobs" ? (
+        {view === "jobs" || view === "agentflow" ? (
           <button className="btn btn-primary" onClick={onNewJob}>
             + New Job
           </button>
