@@ -1,31 +1,31 @@
 from fastapi import APIRouter
 from database import get_db
 
-router = APIRouter(prefix="/api/agents", tags=["agents"])
+router = APIRouter(prefix="/api/task-runs", tags=["task-runs"])
 
 
 @router.get("")
-async def list_agents(job_id: str = None):
+async def list_task_runs(task_id: str = None):
     db = await get_db()
     try:
-        if job_id:
+        if task_id:
             cursor = await db.execute(
-                "SELECT * FROM agents WHERE job_id = ? ORDER BY started_at DESC",
-                (job_id,),
+                "SELECT * FROM task_runs WHERE task_id = ? ORDER BY started_at DESC",
+                (task_id,),
             )
         else:
-            cursor = await db.execute("SELECT * FROM agents ORDER BY started_at DESC")
+            cursor = await db.execute("SELECT * FROM task_runs ORDER BY started_at DESC")
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
     finally:
         await db.close()
 
 
-@router.get("/{agent_id}")
-async def get_agent(agent_id: str):
+@router.get("/{run_id}")
+async def get_task_run(run_id: str):
     db = await get_db()
     try:
-        cursor = await db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,))
+        cursor = await db.execute("SELECT * FROM task_runs WHERE id = ?", (run_id,))
         row = await cursor.fetchone()
         if not row:
             return {"error": "not found"}, 404
@@ -34,13 +34,13 @@ async def get_agent(agent_id: str):
         await db.close()
 
 
-@router.get("/{agent_id}/output")
-async def get_agent_output(agent_id: str):
+@router.get("/{run_id}/output")
+async def get_task_run_output(run_id: str):
     db = await get_db()
     try:
         cursor = await db.execute(
-            "SELECT * FROM agent_output WHERE agent_id = ? ORDER BY seq ASC",
-            (agent_id,),
+            "SELECT * FROM task_run_output WHERE task_run_id = ? ORDER BY seq ASC",
+            (run_id,),
         )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]

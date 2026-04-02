@@ -1,46 +1,43 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { api, Job, Project, Assistant, Schedule, Permissions } from "./api";
+import { api, Task, Flow, Assistant, Permissions } from "./api";
 import { socket } from "./socket";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
-import AgentGrid from "./components/AgentGrid";
-import JobForm from "./components/JobForm";
+import TaskGrid from "./components/TaskGrid";
+import TaskForm from "./components/TaskForm";
 import AssistantList from "./components/AssistantList";
 import AssistantForm from "./components/AssistantForm";
-import ScheduleList from "./components/ScheduleList";
-import AgentFlowView from "./components/AgentFlowView";
+import TaskFlowView from "./components/TaskFlowView";
 
-export interface JobPrefill {
+export interface TaskPrefill {
   title: string;
   prompt: string;
   model: string;
   workDir: string;
-  projectId: string;
+  flowId: string;
   permissions: Permissions;
   assistantId: string;
-  parentJobId: string;
 }
 
 export default function App() {
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
-  const [showJobForm, setShowJobForm] = useState(false);
-  const [view, setView] = useState<"jobs" | "assistants" | "schedules" | "agentflow">("jobs");
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [flows, setFlows] = useState<Flow[]>([]);
+  const [selectedFlow, setSelectedFlow] = useState<string | null>(null);
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [view, setView] = useState<"tasks" | "assistants" | "taskflow">("tasks");
   const [assistants, setAssistants] = useState<Assistant[]>([]);
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [showAssistantForm, setShowAssistantForm] = useState(false);
   const [editingAssistant, setEditingAssistant] = useState<Assistant | null>(null);
-  const [jobPrefill, setJobPrefill] = useState<Partial<JobPrefill> | null>(null);
+  const [taskPrefill, setTaskPrefill] = useState<Partial<TaskPrefill> | null>(null);
 
-  const loadJobs = useCallback(async () => {
-    const data = await api.jobs.list(selectedProject || undefined);
-    setJobs(data);
-  }, [selectedProject]);
+  const loadTasks = useCallback(async () => {
+    const data = await api.tasks.list(selectedFlow || undefined);
+    setTasks(data);
+  }, [selectedFlow]);
 
-  const loadProjects = useCallback(async () => {
-    const data = await api.projects.list();
-    setProjects(data);
+  const loadFlows = useCallback(async () => {
+    const data = await api.flows.list();
+    setFlows(data);
   }, []);
 
   const loadAssistants = useCallback(async () => {
@@ -48,62 +45,57 @@ export default function App() {
     setAssistants(data);
   }, []);
 
-  const loadSchedules = useCallback(async () => {
-    const data = await api.schedules.list();
-    setSchedules(data);
-  }, []);
-
   useEffect(() => {
-    loadJobs();
-    loadProjects();
+    loadTasks();
+    loadFlows();
     loadAssistants();
-    loadSchedules();
-  }, [loadJobs, loadProjects, loadAssistants, loadSchedules]);
+  }, [loadTasks, loadFlows, loadAssistants]);
 
   // Real-time updates
   useEffect(() => {
-    function onJobUpdated(data: { id: string; status: string }) {
-      setJobs((prev) =>
-        prev.map((j) =>
-          j.id === data.id ? { ...j, status: data.status, updated_at: new Date().toISOString() } : j
-        )
-      );
+    function onTaskUpdated(data: { id: string; latest_run_status: string }) {
+      loadTasks();
     }
 
-    socket.on("job:updated", onJobUpdated);
+    socket.on("task:updated", onTaskUpdated);
     return () => {
-      socket.off("job:updated", onJobUpdated);
+      socket.off("task:updated", onTaskUpdated);
     };
-  }, []);
+  }, [loadTasks]);
 
   // Poll every 5s for fresh data
   useEffect(() => {
-    const interval = setInterval(loadJobs, 5000);
+    const interval = setInterval(loadTasks, 5000);
     return () => clearInterval(interval);
-  }, [loadJobs]);
+  }, [loadTasks]);
 
   async function handleCancel(id: string) {
-    await api.jobs.cancel(id);
-    loadJobs();
+    await api.tasks.cancel(id);
+    loadTasks();
   }
 
   async function handleDelete(id: string) {
-    await api.jobs.delete(id);
-    loadJobs();
+    await api.tasks.delete(id);
+    loadTasks();
+  }
+
+  async function handleTrigger(id: string) {
+    await api.tasks.trigger(id);
+    loadTasks();
   }
 
   function handleSpawnFromAssistant(assistant: Assistant) {
-    setJobPrefill({
+    setTaskPrefill({
       title: "",
       prompt: "",
       model: assistant.default_model,
       workDir: assistant.default_work_dir,
-      projectId: assistant.default_project_id || "",
+      flowId: assistant.default_flow_id || "",
       permissions: assistant.default_permissions,
       assistantId: assistant.id,
     });
-    setShowJobForm(true);
-    setView("jobs");
+    setShowTaskForm(true);
+    setView("tasks");
   }
 
   function handleEditAssistant(assistant: Assistant) {
@@ -119,39 +111,36 @@ export default function App() {
   return (
     <div className="app">
       <Header
-        jobs={jobs}
+        tasks={tasks}
         view={view}
         onViewChange={setView}
-        onNewJob={() => {
-          setJobPrefill(null);
-          setShowJobForm(true);
+        onNewTask={() => {
+          setTaskPrefill(null);
+          setShowTaskForm(true);
         }}
         onNewAssistant={() => {
           setEditingAssistant(null);
           setShowAssistantForm(true);
         }}
-        onNewSchedule={() => {
-          setJobPrefill(null);
-          setShowJobForm(true);
-        }}
       />
       <div className="main-layout">
         <Sidebar
-          projects={projects}
-          selectedProject={selectedProject}
-          onSelectProject={setSelectedProject}
-          onProjectsChange={loadProjects}
-          jobs={jobs}
+          flows={flows}
+          selectedFlow={selectedFlow}
+          onSelectFlow={setSelectedFlow}
+          onFlowsChange={loadFlows}
+          tasks={tasks}
         />
         <main className="content">
-          {view === "jobs" ? (
-            <AgentGrid
-              jobs={jobs}
+          {view === "tasks" ? (
+            <TaskGrid
+              tasks={tasks}
               onCancel={handleCancel}
               onDelete={handleDelete}
-              onNewJob={() => {
-                setJobPrefill(null);
-                setShowJobForm(true);
+              onTrigger={handleTrigger}
+              onNewTask={() => {
+                setTaskPrefill(null);
+                setShowTaskForm(true);
               }}
             />
           ) : view === "assistants" ? (
@@ -165,43 +154,32 @@ export default function App() {
                 setShowAssistantForm(true);
               }}
             />
-          ) : view === "agentflow" ? (
-            <AgentFlowView
-              selectedProject={selectedProject}
+          ) : (
+            <TaskFlowView
+              selectedFlow={selectedFlow}
               onCancel={handleCancel}
               onDelete={handleDelete}
-            />
-          ) : (
-            <ScheduleList
-              schedules={schedules}
-              onRefresh={() => {
-                loadSchedules();
-                loadJobs();
-              }}
-              onNewSchedule={() => {
-                setJobPrefill(null);
-                setShowJobForm(true);
-              }}
+              onTrigger={handleTrigger}
             />
           )}
         </main>
       </div>
-      {showJobForm && (
-        <JobForm
-          projects={projects}
-          jobs={jobs}
-          selectedProject={selectedProject}
+      {showTaskForm && (
+        <TaskForm
+          flows={flows}
+          tasks={tasks}
+          selectedFlow={selectedFlow}
           onClose={() => {
-            setShowJobForm(false);
-            setJobPrefill(null);
+            setShowTaskForm(false);
+            setTaskPrefill(null);
           }}
-          onCreated={loadJobs}
-          prefill={jobPrefill}
+          onCreated={loadTasks}
+          prefill={taskPrefill}
         />
       )}
       {showAssistantForm && (
         <AssistantForm
-          projects={projects}
+          flows={flows}
           assistant={editingAssistant}
           onClose={() => {
             setShowAssistantForm(false);

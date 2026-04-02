@@ -10,28 +10,27 @@ import {
   type Node,
   type Edge,
   type NodeTypes,
-  type OnNodeDrag,
 } from "@xyflow/react";
 import dagre from "dagre";
 import "@xyflow/react/dist/style.css";
 
 import { api, DagNode, DagEdge } from "../api";
 import { socket } from "../socket";
-import JobNode from "./JobNode";
+import TaskNode from "./TaskNode";
 import FlowDetailPanel from "./FlowDetailPanel";
 
 const NODE_WIDTH = 260;
 const NODE_HEIGHT = 72;
 
 const nodeTypes: NodeTypes = {
-  jobNode: JobNode,
+  taskNode: TaskNode,
 };
 
-function getStatusColor(status: string): string {
+function getStatusColor(status: string | null): string {
   switch (status) {
     case "running":
       return "#38a063";
-    case "done":
+    case "success":
       return "#4caf7d";
     case "failed":
       return "#c0392b";
@@ -66,12 +65,14 @@ function layoutGraph(
     const pos = g.node(n.id);
     return {
       id: n.id,
-      type: "jobNode",
+      type: "taskNode",
       position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
       data: {
         title: n.title,
         status: n.status,
+        latestRunStatus: n.latest_run_status,
         model: n.model,
+        schedule: n.schedule,
       },
     };
   });
@@ -79,8 +80,8 @@ function layoutGraph(
   const edges: Edge[] = dagEdges.map((e, i) => {
     const targetNode = dagNodes.find((n) => n.id === e.target);
     const sourceNode = dagNodes.find((n) => n.id === e.source);
-    const isRunning = targetNode?.status === "running";
-    const isFailed = sourceNode?.status === "failed";
+    const isRunning = targetNode?.latest_run_status === "running";
+    const isFailed = sourceNode?.latest_run_status === "failed";
 
     return {
       id: `e-${i}`,
@@ -98,12 +99,13 @@ function layoutGraph(
 }
 
 interface Props {
-  selectedProject: string | null;
+  selectedFlow: string | null;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
+  onTrigger: (id: string) => void;
 }
 
-export default function AgentFlowView({ selectedProject, onCancel, onDelete }: Props) {
+export default function TaskFlowView({ selectedFlow, onCancel, onDelete, onTrigger }: Props) {
   const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[]);
   const [dagData, setDagData] = useState<{ nodes: DagNode[]; edges: DagEdge[] }>({
@@ -113,26 +115,24 @@ export default function AgentFlowView({ selectedProject, onCancel, onDelete }: P
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const loadDag = useCallback(async () => {
-    const data = await api.jobs.dag(selectedProject || undefined);
+    const data = await api.tasks.dag(selectedFlow || undefined);
     setDagData(data);
     const { nodes: layoutNodes, edges: layoutEdges } = layoutGraph(data.nodes, data.edges);
     setNodes(layoutNodes);
     setEdges(layoutEdges);
-  }, [selectedProject, setNodes, setEdges]);
+  }, [selectedFlow, setNodes, setEdges]);
 
-  // Initial load
   useEffect(() => {
     loadDag();
   }, [loadDag]);
 
-  // Real-time updates
   useEffect(() => {
-    function onJobUpdated(data: { id: string; status: string }) {
+    function onTaskUpdated(data: { id: string; latest_run_status: string }) {
       setDagData((prev) => {
         const updated = {
           ...prev,
           nodes: prev.nodes.map((n) =>
-            n.id === data.id ? { ...n, status: data.status } : n
+            n.id === data.id ? { ...n, latest_run_status: data.latest_run_status } : n
           ),
         };
         const { nodes: ln, edges: le } = layoutGraph(updated.nodes, updated.edges);
@@ -142,13 +142,12 @@ export default function AgentFlowView({ selectedProject, onCancel, onDelete }: P
       });
     }
 
-    socket.on("job:updated", onJobUpdated);
+    socket.on("task:updated", onTaskUpdated);
     return () => {
-      socket.off("job:updated", onJobUpdated);
+      socket.off("task:updated", onTaskUpdated);
     };
   }, [setNodes, setEdges]);
 
-  // Poll for new jobs (they may be created outside this view)
   useEffect(() => {
     const interval = setInterval(loadDag, 10000);
     return () => clearInterval(interval);
@@ -196,6 +195,14 @@ export default function AgentFlowView({ selectedProject, onCancel, onDelete }: P
     [onDelete, loadDag]
   );
 
+  const handleTrigger = useCallback(
+    (id: string) => {
+      onTrigger(id);
+      setTimeout(loadDag, 500);
+    },
+    [onTrigger, loadDag]
+  );
+
   return (
     <div className="agentflow-container">
       <ReactFlow
@@ -218,7 +225,7 @@ export default function AgentFlowView({ selectedProject, onCancel, onDelete }: P
         />
         <MiniMap
           className="flow-minimap"
-          nodeColor={(n) => getStatusColor((n.data as { status?: string })?.status || "queued")}
+          nodeColor={(n) => getStatusColor((n.data as { latestRunStatus?: string })?.latestRunStatus || null)}
           maskColor="rgba(10, 15, 11, 0.8)"
         />
       </ReactFlow>
@@ -226,8 +233,8 @@ export default function AgentFlowView({ selectedProject, onCancel, onDelete }: P
       {dagData.nodes.length === 0 && (
         <div className="flow-empty-overlay">
           <div className="empty-state">
-            <h2>No jobs yet</h2>
-            <p>Create jobs with dependencies to see the flow graph</p>
+            <h2>No tasks yet</h2>
+            <p>Create tasks with dependencies to see the flow graph</p>
           </div>
         </div>
       )}
@@ -241,6 +248,7 @@ export default function AgentFlowView({ selectedProject, onCancel, onDelete }: P
           onClose={() => setSelectedNodeId(null)}
           onCancel={handleCancel}
           onDelete={handleDelete}
+          onTrigger={handleTrigger}
           onNodeSelect={(id) => setSelectedNodeId(id)}
         />
       )}

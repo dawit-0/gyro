@@ -1,14 +1,14 @@
 import React, { useState } from "react";
-import { api, Job, Project, Permissions, PERMISSION_PRESETS } from "../api";
-import { JobPrefill } from "../App";
+import { api, Task, Flow, Permissions, PERMISSION_PRESETS } from "../api";
+import { TaskPrefill } from "../App";
 
 interface Props {
-  projects: Project[];
-  jobs: Job[];
-  selectedProject: string | null;
+  flows: Flow[];
+  tasks: Task[];
+  selectedFlow: string | null;
   onClose: () => void;
   onCreated: () => void;
-  prefill?: Partial<JobPrefill> | null;
+  prefill?: Partial<TaskPrefill> | null;
 }
 
 const MODELS = [
@@ -16,8 +16,6 @@ const MODELS = [
   { value: "claude-opus-4-20250514", label: "Claude Opus" },
   { value: "claude-haiku-3-5-20241022", label: "Claude Haiku" },
 ];
-
-type ScheduleMode = "now" | "later" | "recurring";
 
 const CRON_PRESETS = [
   { label: "Every hour", value: "0 * * * *" },
@@ -33,12 +31,12 @@ function describeCron(expr: string): string {
   return expr;
 }
 
-export default function JobForm({ projects, jobs, selectedProject, onClose, onCreated, prefill }: Props) {
+export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreated, prefill }: Props) {
   const [title, setTitle] = useState(prefill?.title || "");
   const [prompt, setPrompt] = useState(prefill?.prompt || "");
   const [model, setModel] = useState(prefill?.model || MODELS[0].value);
   const [workDir, setWorkDir] = useState(prefill?.workDir || "");
-  const [projectId, setProjectId] = useState(prefill?.projectId || selectedProject || "");
+  const [flowId, setFlowId] = useState(prefill?.flowId || selectedFlow || "");
   const [permissions, setPermissions] = useState<Permissions>(
     prefill?.permissions?.preset ? prefill.permissions : PERMISSION_PRESETS["standard"]
   );
@@ -46,66 +44,48 @@ export default function JobForm({ projects, jobs, selectedProject, onClose, onCr
   const [submitting, setSubmitting] = useState(false);
 
   // Dependency state (multi-select)
-  const [dependsOn, setDependsOn] = useState<string[]>(
-    prefill?.parentJobId ? [prefill.parentJobId] : []
-  );
+  const [dependsOn, setDependsOn] = useState<string[]>([]);
 
-  // Scheduling state
-  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("now");
-  const [scheduledFor, setScheduledFor] = useState("");
+  // Schedule state
+  const [hasSchedule, setHasSchedule] = useState(false);
   const [cronExpression, setCronExpression] = useState(CRON_PRESETS[1].value);
-  const [scheduleName, setScheduleName] = useState("");
+
+  // Whether to trigger immediately
+  const [triggerNow, setTriggerNow] = useState(true);
 
   const isSpawn = !!prefill?.assistantId;
-  const isRecurring = scheduleMode === "recurring";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!prompt.trim()) return;
-    if (!isRecurring && !title.trim()) return;
-    if (isRecurring && !scheduleName.trim()) return;
+    if (!prompt.trim() || !title.trim()) return;
     setSubmitting(true);
     try {
-      if (isRecurring) {
-        await api.schedules.create({
-          name: scheduleName.trim(),
-          cron_expression: cronExpression,
-          title_template: title.trim() || scheduleName.trim() + " #{n}",
+      if (isSpawn && prefill?.assistantId) {
+        await api.assistants.spawn(prefill.assistantId, {
+          title: title.trim(),
           prompt: prompt.trim(),
           model,
           work_dir: workDir.trim(),
-          project_id: projectId || undefined,
+          flow_id: flowId || undefined,
           permissions,
-          assistant_id: prefill?.assistantId || undefined,
+          depends_on: dependsOn.length > 0 ? dependsOn : undefined,
+          trigger: triggerNow,
         });
       } else {
-        const scheduled_for =
-          scheduleMode === "later" && scheduledFor
-            ? new Date(scheduledFor).toISOString()
-            : undefined;
+        const task = await api.tasks.create({
+          title: title.trim(),
+          prompt: prompt.trim(),
+          model,
+          work_dir: workDir.trim(),
+          flow_id: flowId || undefined,
+          permissions,
+          schedule: hasSchedule ? cronExpression : undefined,
+          depends_on: dependsOn.length > 0 ? dependsOn : undefined,
+        });
 
-        if (isSpawn && prefill?.assistantId) {
-          await api.assistants.spawn(prefill.assistantId, {
-            title: title.trim(),
-            prompt: prompt.trim(),
-            model,
-            work_dir: workDir.trim(),
-            project_id: projectId || undefined,
-            permissions,
-            scheduled_for,
-            depends_on: dependsOn.length > 0 ? dependsOn : undefined,
-          });
-        } else {
-          await api.jobs.create({
-            title: title.trim(),
-            prompt: prompt.trim(),
-            model,
-            work_dir: workDir.trim(),
-            project_id: projectId || undefined,
-            permissions,
-            scheduled_for,
-            depends_on: dependsOn.length > 0 ? dependsOn : undefined,
-          });
+        // Trigger immediately if requested and no schedule
+        if (triggerNow && !hasSchedule) {
+          await api.tasks.trigger(task.id);
         }
       }
       onCreated();
@@ -119,45 +99,26 @@ export default function JobForm({ projects, jobs, selectedProject, onClose, onCr
 
   function getSubmitLabel() {
     if (submitting) return "Creating...";
-    if (isRecurring) return "Create Schedule";
-    if (isSpawn) return "Spawn Job";
-    if (scheduleMode === "later") return "Schedule Job";
-    return "Create Job";
+    if (isSpawn) return triggerNow ? "Spawn & Run" : "Spawn Task";
+    if (hasSchedule) return "Create Scheduled Task";
+    return triggerNow ? "Create & Run" : "Create Task";
   }
 
-  const isValid =
-    prompt.trim() &&
-    (isRecurring ? scheduleName.trim() && cronExpression : title.trim()) &&
-    (scheduleMode !== "later" || scheduledFor);
+  const isValid = prompt.trim() && title.trim();
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>{isRecurring ? "New Recurring Schedule" : isSpawn ? "Spawn Job from Assistant" : "New Job"}</h2>
+        <h2>{isSpawn ? "Spawn Task from Assistant" : "New Task"}</h2>
         <form onSubmit={handleSubmit}>
-          {isRecurring && (
-            <div className="form-group">
-              <label>Schedule Name</label>
-              <input
-                value={scheduleName}
-                onChange={(e) => setScheduleName(e.target.value)}
-                placeholder="e.g. Daily code review"
-                autoFocus
-              />
-            </div>
-          )}
-
           <div className="form-group">
-            <label>{isRecurring ? "Job Title Template" : "Title"}</label>
+            <label>Title</label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={isRecurring ? "e.g. Code review {date} #{n}" : "Brief description of the task"}
-              autoFocus={!isRecurring}
+              placeholder="Brief description of the task"
+              autoFocus
             />
-            {isRecurring && (
-              <p className="field-hint">Use {"{date}"} for date and {"{n}"} for run number</p>
-            )}
           </div>
 
           <div className="form-group">
@@ -165,48 +126,24 @@ export default function JobForm({ projects, jobs, selectedProject, onClose, onCr
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder={isSpawn ? "Describe the specific task for this job..." : "Detailed instructions for the agent..."}
+              placeholder={isSpawn ? "Describe the specific task..." : "Detailed instructions for the agent..."}
             />
           </div>
 
           <div className="form-group">
-            <label>Scheduling</label>
-            <div className="schedule-modes">
-              <button
-                type="button"
-                className={`btn btn-sm${scheduleMode === "now" ? " active" : ""}`}
-                onClick={() => setScheduleMode("now")}
-              >
-                Run Now
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm${scheduleMode === "later" ? " active" : ""}`}
-                onClick={() => setScheduleMode("later")}
-              >
-                Run Later
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm${scheduleMode === "recurring" ? " active" : ""}`}
-                onClick={() => setScheduleMode("recurring")}
-              >
-                Recurring
-              </button>
+            <label>Schedule (optional)</label>
+            <div className="schedule-toggle">
+              <label className="permission-toggle">
+                <input
+                  type="checkbox"
+                  checked={hasSchedule}
+                  onChange={(e) => setHasSchedule(e.target.checked)}
+                />
+                <span>Run on a recurring schedule</span>
+              </label>
             </div>
 
-            {scheduleMode === "later" && (
-              <div className="schedule-config">
-                <input
-                  type="datetime-local"
-                  value={scheduledFor}
-                  onChange={(e) => setScheduledFor(e.target.value)}
-                  min={new Date().toISOString().slice(0, 16)}
-                />
-              </div>
-            )}
-
-            {scheduleMode === "recurring" && (
+            {hasSchedule && (
               <div className="schedule-config">
                 <div className="cron-presets">
                   {CRON_PRESETS.map((p) => (
@@ -231,6 +168,19 @@ export default function JobForm({ projects, jobs, selectedProject, onClose, onCr
             )}
           </div>
 
+          {!hasSchedule && (
+            <div className="form-group">
+              <label className="permission-toggle">
+                <input
+                  type="checkbox"
+                  checked={triggerNow}
+                  onChange={(e) => setTriggerNow(e.target.checked)}
+                />
+                <span>Trigger immediately after creation</span>
+              </label>
+            </div>
+          )}
+
           <div className="form-group">
             <label>Model</label>
             <select value={model} onChange={(e) => setModel(e.target.value)}>
@@ -252,41 +202,40 @@ export default function JobForm({ projects, jobs, selectedProject, onClose, onCr
           </div>
 
           <div className="form-group">
-            <label>Project (optional)</label>
-            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-              <option value="">None</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
+            <label>Flow (optional)</label>
+            <select value={flowId} onChange={(e) => setFlowId(e.target.value)}>
+              <option value="">None (standalone task)</option>
+              {flows.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
                 </option>
               ))}
             </select>
           </div>
 
-          {!isRecurring && jobs.length > 0 && (
+          {tasks.length > 0 && (
             <div className="form-group">
               <label>Depends On (optional)</label>
               <div className="depends-on-list">
-                {jobs.map((j) => (
-                  <label key={j.id} className="permission-toggle">
+                {tasks.map((t) => (
+                  <label key={t.id} className="permission-toggle">
                     <input
                       type="checkbox"
-                      checked={dependsOn.includes(j.id)}
+                      checked={dependsOn.includes(t.id)}
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setDependsOn([...dependsOn, j.id]);
+                          setDependsOn([...dependsOn, t.id]);
                         } else {
-                          setDependsOn(dependsOn.filter((id) => id !== j.id));
+                          setDependsOn(dependsOn.filter((id) => id !== t.id));
                         }
                       }}
                     />
-                    <span>{j.title}</span>
-                    <span className={`flow-node-status ${j.status}`}>{j.status}</span>
+                    <span>{t.title}</span>
                   </label>
                 ))}
               </div>
               {dependsOn.length > 0 && (
-                <p className="field-hint">This job will run after all selected jobs succeed.</p>
+                <p className="field-hint">This task will wait for all selected tasks to succeed before running.</p>
               )}
             </div>
           )}

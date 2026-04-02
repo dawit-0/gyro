@@ -244,8 +244,8 @@ input, textarea, select {
   color: var(--text-muted);
 }
 
-/* Agent Grid */
-.agent-grid {
+/* Task Grid */
+.task-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   gap: 16px;
@@ -272,8 +272,8 @@ input, textarea, select {
   margin-bottom: 20px;
 }
 
-/* Agent Card */
-.agent-card {
+/* Task Card */
+.task-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -281,23 +281,27 @@ input, textarea, select {
   transition: border-color 0.15s;
 }
 
-.agent-card:hover {
+.task-card:hover {
   border-color: var(--text-muted);
 }
 
-.agent-card.status-running {
+.task-card.status-running {
   border-color: var(--running);
 }
 
-.agent-card.status-done {
+.task-card.status-success {
   border-color: var(--success);
 }
 
-.agent-card.status-failed {
+.task-card.status-failed {
   border-color: var(--danger);
 }
 
-.agent-card-header {
+.task-card.status-idle {
+  border-color: var(--border);
+}
+
+.task-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -305,7 +309,7 @@ input, textarea, select {
   border-bottom: 1px solid var(--border);
 }
 
-.agent-card-header h3 {
+.task-card-header h3 {
   font-size: 0.9rem;
   font-weight: 600;
   white-space: nowrap;
@@ -333,9 +337,15 @@ input, textarea, select {
   color: var(--queued);
 }
 
-.status-pill.done {
+.status-pill.done,
+.status-pill.success {
   background: rgba(0, 184, 148, 0.15);
   color: var(--success);
+}
+
+.status-pill.idle {
+  background: rgba(99, 110, 114, 0.1);
+  color: var(--text-muted);
 }
 
 .status-pill.failed {
@@ -348,7 +358,7 @@ input, textarea, select {
   color: var(--text-muted);
 }
 
-.agent-card-meta {
+.task-card-meta {
   display: flex;
   gap: 12px;
   padding: 8px 16px;
@@ -357,7 +367,7 @@ input, textarea, select {
   border-bottom: 1px solid var(--border);
 }
 
-.agent-card-output {
+.task-card-output {
   padding: 12px 16px;
   max-height: 250px;
   overflow-y: auto;
@@ -369,14 +379,14 @@ input, textarea, select {
   word-break: break-word;
 }
 
-.agent-card-actions {
+.task-card-actions {
   display: flex;
   gap: 6px;
   padding: 10px 16px;
   border-top: 1px solid var(--border);
 }
 
-/* Job Form Modal */
+/* Task Form Modal */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -811,121 +821,62 @@ input, textarea, select {
   color: var(--text-muted);
 }
 
-/* Schedule Grid */
-.schedule-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+/* Schedule badge */
+.schedule-badge {
+  color: var(--info);
+  font-weight: 700;
+}
+
+.schedule-badge-sm {
+  color: var(--info);
+  font-size: 0.75rem;
+}
+
+.schedule-meta {
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  color: var(--info);
+  font-size: 0.7rem;
+}
+
+.flow-schedule-badge {
+  color: var(--info);
+  font-size: 0.75rem;
+}
+
+.flow-detail-schedule {
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  font-size: 0.7rem;
+  color: var(--info);
+}
+
+.schedule-toggle {
+  margin-bottom: 0.5rem;
+}
+
+/* Sidebar summary */
+.sidebar-summary {
+  display: flex;
   gap: 16px;
 }
 
-.schedule-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 16px;
-  transition: border-color 0.15s;
+.summary-item {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-
-.schedule-card:hover {
-  border-color: var(--text-muted);
-}
-
-.schedule-card.disabled {
-  opacity: 0.5;
-}
-
-.schedule-card-header {
-  display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 2px;
 }
 
-.schedule-card-header h3 {
-  font-size: 0.95rem;
-  font-weight: 600;
+.summary-count {
+  font-size: 1.25rem;
+  font-weight: 700;
   color: var(--text-primary);
 }
 
-.schedule-card-cron {
-  font-size: 0.825rem;
-  color: var(--accent);
-  font-weight: 500;
-}
-
-.schedule-card-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 0.75rem;
+.summary-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   color: var(--text-muted);
-}
-
-.meta-label {
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
-.schedule-card-prompt {
-  font-size: 0.775rem;
-  color: var(--text-secondary);
-  line-height: 1.4;
-}
-
-.schedule-card-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-/* Toggle Switch */
-.toggle-switch {
-  position: relative;
-  display: inline-block;
-  width: 36px;
-  height: 20px;
-  flex-shrink: 0;
-}
-
-.toggle-switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  inset: 0;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  transition: 0.2s;
-}
-
-.toggle-slider::before {
-  content: "";
-  position: absolute;
-  height: 14px;
-  width: 14px;
-  left: 2px;
-  bottom: 2px;
-  background: var(--text-muted);
-  border-radius: 50%;
-  transition: 0.2s;
-}
-
-.toggle-switch input:checked + .toggle-slider {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.toggle-switch input:checked + .toggle-slider::before {
-  transform: translateX(16px);
-  background: white;
 }
 
 /* Scheduled status pill */
@@ -977,8 +928,13 @@ input, textarea, select {
   box-shadow: 0 0 12px rgba(56, 160, 99, 0.25);
 }
 
-.flow-node-done {
+.flow-node-done,
+.flow-node-success {
   border-color: var(--success);
+}
+
+.flow-node-idle {
+  border-color: var(--border);
 }
 
 .flow-node-failed {
@@ -1033,9 +989,15 @@ input, textarea, select {
   color: var(--queued);
 }
 
-.flow-node-status.done {
+.flow-node-status.done,
+.flow-node-status.success {
   background: rgba(76, 175, 125, 0.15);
   color: var(--success);
+}
+
+.flow-node-status.idle {
+  background: rgba(99, 110, 114, 0.1);
+  color: var(--text-muted);
 }
 
 .flow-node-status.failed {

@@ -16,7 +16,7 @@ export default function AssistantList({ assistants, onSpawn, onEdit, onDelete, o
       <div className="empty-state">
         <p>No assistants yet</p>
         <p className="text-muted">
-          Create pre-configured assistants with instructions and context to quickly spawn jobs.
+          Create pre-configured assistants with instructions and context to quickly spawn tasks.
         </p>
         <button className="btn btn-primary" onClick={onNewAssistant}>
           + New Assistant

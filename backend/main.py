@@ -10,11 +10,10 @@ from pathlib import Path
 
 from database import init_db
 from orchestrator import Orchestrator
-from routes.jobs import router as jobs_router
-from routes.agents import router as agents_router
-from routes.projects import router as projects_router
+from routes.tasks import router as tasks_router
+from routes.task_runs import router as task_runs_router
+from routes.flows import router as flows_router
 from routes.assistants import router as assistants_router
-from routes.schedules import router as schedules_router
 
 # Socket.IO
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
@@ -39,17 +38,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(jobs_router)
-app.include_router(agents_router)
-app.include_router(projects_router)
+app.include_router(tasks_router)
+app.include_router(task_runs_router)
+app.include_router(flows_router)
 app.include_router(assistants_router)
-app.include_router(schedules_router)
 
 
-# Cancel job endpoint that needs orchestrator
-@app.post("/api/jobs/{job_id}/cancel")
-async def cancel_job(job_id: str):
-    await orchestrator.cancel_job(job_id)
+# Cancel task run endpoint that needs orchestrator
+@app.post("/api/tasks/{task_id}/cancel")
+async def cancel_task(task_id: str):
+    await orchestrator.cancel_task_run(task_id)
     return {"ok": True}
 
 

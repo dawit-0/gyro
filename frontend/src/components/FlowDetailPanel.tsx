@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { api, Agent, AgentOutput, DagNode } from "../api";
+import { api, TaskRun, TaskRunOutput, DagNode } from "../api";
 
 interface Props {
   node: DagNode;
@@ -9,6 +9,7 @@ interface Props {
   onClose: () => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
+  onTrigger: (id: string) => void;
   onNodeSelect: (id: string) => void;
 }
 
@@ -20,32 +21,34 @@ export default function FlowDetailPanel({
   onClose,
   onCancel,
   onDelete,
+  onTrigger,
   onNodeSelect,
 }: Props) {
-  const [agent, setAgent] = useState<Agent | null>(null);
-  const [output, setOutput] = useState<AgentOutput[]>([]);
+  const [latestRun, setLatestRun] = useState<TaskRun | null>(null);
+  const [output, setOutput] = useState<TaskRunOutput[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const agents = await api.agents.list(node.id);
+      const runs = await api.taskRuns.list(node.id);
       if (cancelled) return;
-      if (agents.length > 0) {
-        const latest = agents[agents.length - 1];
-        setAgent(latest);
-        const out = await api.agents.output(latest.id);
+      if (runs.length > 0) {
+        const latest = runs[0];
+        setLatestRun(latest);
+        const out = await api.taskRuns.output(latest.id);
         if (!cancelled) setOutput(out);
       } else {
-        setAgent(null);
+        setLatestRun(null);
         setOutput([]);
       }
     }
     load();
     return () => { cancelled = true; };
-  }, [node.id]);
+  }, [node.id, node.latest_run_status]);
 
   const nodeMap = new Map(allNodes.map((n) => [n.id, n]));
-  const isActive = node.status === "running" || node.status === "queued";
+  const displayStatus = node.latest_run_status || "idle";
+  const isRunning = displayStatus === "running" || displayStatus === "queued";
 
   return (
     <div className="flow-detail-panel">
@@ -55,20 +58,24 @@ export default function FlowDetailPanel({
       </div>
 
       <div className="flow-detail-status-row">
-        <span className={`status-pill ${node.status}`}>{node.status}</span>
+        <span className={`status-pill ${displayStatus}`}>{displayStatus}</span>
         <span className="flow-detail-model">{node.model}</span>
+        {node.schedule && <span className="flow-detail-schedule">{node.schedule}</span>}
       </div>
 
-      {agent && (
+      {latestRun && (
         <div className="flow-detail-timing">
-          {agent.duration_ms > 0 && (
-            <span>{(agent.duration_ms / 1000).toFixed(1)}s</span>
+          {latestRun.run_number > 0 && (
+            <span>Run #{latestRun.run_number}</span>
           )}
-          {agent.cost_usd > 0 && (
-            <span>${agent.cost_usd.toFixed(4)}</span>
+          {latestRun.duration_ms > 0 && (
+            <span>{(latestRun.duration_ms / 1000).toFixed(1)}s</span>
           )}
-          {agent.num_turns > 0 && (
-            <span>{agent.num_turns} turns</span>
+          {latestRun.cost_usd > 0 && (
+            <span>${latestRun.cost_usd.toFixed(4)}</span>
+          )}
+          {latestRun.num_turns > 0 && (
+            <span>{latestRun.num_turns} turns</span>
           )}
         </div>
       )}
@@ -124,23 +131,21 @@ export default function FlowDetailPanel({
         </div>
       )}
 
-      {isActive && (
-        <div className="flow-detail-actions">
+      <div className="flow-detail-actions">
+        {isRunning && (
           <button className="btn btn-sm btn-danger" onClick={() => onCancel(node.id)}>
             Cancel
           </button>
-          <button className="btn btn-sm btn-secondary" onClick={() => onDelete(node.id)}>
-            Delete
+        )}
+        {!isRunning && (
+          <button className="btn btn-sm btn-primary" onClick={() => onTrigger(node.id)}>
+            Trigger
           </button>
-        </div>
-      )}
-      {!isActive && (
-        <div className="flow-detail-actions">
-          <button className="btn btn-sm btn-secondary" onClick={() => onDelete(node.id)}>
-            Delete
-          </button>
-        </div>
-      )}
+        )}
+        <button className="btn btn-sm btn-secondary" onClick={() => onDelete(node.id)}>
+          Delete
+        </button>
+      </div>
     </div>
   );
 }

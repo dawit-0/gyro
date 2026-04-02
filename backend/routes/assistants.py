@@ -2,7 +2,7 @@ import json
 import uuid
 from fastapi import APIRouter
 from database import get_db
-from models import AssistantCreate, AssistantUpdate, SpawnJob, DEFAULT_PERMISSIONS
+from models import AssistantCreate, AssistantUpdate, SpawnTask, DEFAULT_PERMISSIONS
 
 router = APIRouter(prefix="/api/assistants", tags=["assistants"])
 
@@ -64,7 +64,7 @@ async def create_assistant(body: AssistantCreate):
     db = await get_db()
     try:
         await db.execute(
-            """INSERT INTO assistants (id, name, description, instructions, context, default_model, default_permissions, default_work_dir, default_project_id)
+            """INSERT INTO assistants (id, name, description, instructions, context, default_model, default_permissions, default_work_dir, default_flow_id)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 assistant_id,
@@ -75,7 +75,7 @@ async def create_assistant(body: AssistantCreate):
                 body.default_model,
                 json.dumps(permissions),
                 body.default_work_dir,
-                body.default_project_id,
+                body.default_flow_id,
             ),
         )
         await db.commit()
@@ -124,7 +124,7 @@ async def delete_assistant(assistant_id: str):
 
 
 @router.post("/{assistant_id}/spawn")
-async def spawn_job(assistant_id: str, body: SpawnJob):
+async def spawn_task(assistant_id: str, body: SpawnTask):
     db = await get_db()
     try:
         cursor = await db.execute("SELECT * FROM assistants WHERE id = ?", (assistant_id,))
@@ -148,34 +148,46 @@ async def spawn_job(assistant_id: str, body: SpawnJob):
         model = body.model or assistant["default_model"]
         permissions = body.permissions if body.permissions else (assistant["default_permissions"] or DEFAULT_PERMISSIONS)
         work_dir = body.work_dir if body.work_dir is not None else assistant["default_work_dir"]
-        project_id = body.project_id if body.project_id is not None else assistant["default_project_id"]
+        flow_id = body.flow_id if body.flow_id is not None else assistant["default_flow_id"]
 
-        job_id = str(uuid.uuid4())
+        task_id = str(uuid.uuid4())
         permissions_json = json.dumps(permissions)
-        # Resolve depends_on
-        depends_on = list(body.depends_on or [])
-        if body.parent_job_id and body.parent_job_id not in depends_on:
-            depends_on.append(body.parent_job_id)
-        parent_job_id = depends_on[0] if depends_on else body.parent_job_id
 
         await db.execute(
-            """INSERT INTO jobs (id, title, prompt, model, priority, work_dir, project_id, permissions, assistant_id, scheduled_for, parent_job_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (job_id, body.title, merged_prompt, model, body.priority, work_dir, project_id, permissions_json, assistant_id, body.scheduled_for, parent_job_id),
+            """INSERT INTO tasks (id, title, prompt, model, priority, work_dir, flow_id, permissions, assistant_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (task_id, body.title, merged_prompt, model, body.priority, work_dir, flow_id, permissions_json, assistant_id),
         )
 
         # Insert dependency rows
+        depends_on = list(body.depends_on or [])
         for dep_id in depends_on:
-            if dep_id != job_id:
+            if dep_id != task_id:
                 await db.execute(
-                    "INSERT OR IGNORE INTO job_dependencies (job_id, depends_on_job_id) VALUES (?, ?)",
-                    (job_id, dep_id),
+                    "INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_task_id) VALUES (?, ?)",
+                    (task_id, dep_id),
                 )
 
+        # Optionally trigger a run immediately
+        run = None
+        if body.trigger:
+            run_id = str(uuid.uuid4())
+            await db.execute(
+                """INSERT INTO task_runs (id, task_id, run_number, trigger, status)
+                   VALUES (?, ?, 1, 'manual', 'queued')""",
+                (run_id, task_id),
+            )
+            run = {"id": run_id, "task_id": task_id, "run_number": 1}
+
         await db.commit()
-        cursor = await db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
-        job = dict(await cursor.fetchone())
-        job["permissions"] = json.loads(job["permissions"]) if job["permissions"] else DEFAULT_PERMISSIONS
-        return job
+        cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        task_result = dict(await cursor.fetchone())
+        try:
+            task_result["permissions"] = json.loads(task_result.get("permissions") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            task_result["permissions"] = DEFAULT_PERMISSIONS
+        if run:
+            task_result["triggered_run"] = run
+        return task_result
     finally:
         await db.close()

@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-import signal
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -12,14 +11,14 @@ import cron as cron_parser
 from database import get_db
 from models import DEFAULT_PERMISSIONS
 
-MAX_CONCURRENT_AGENTS = 5
+MAX_CONCURRENT_RUNS = 5
 POLL_INTERVAL = 2  # seconds
 
 
 class Orchestrator:
     def __init__(self, sio):
         self.sio = sio
-        self.running_agents: dict[str, asyncio.subprocess.Process] = {}
+        self.running_processes: dict[str, asyncio.subprocess.Process] = {}
         self._poll_task: Optional[asyncio.Task] = None
 
     async def start(self):
@@ -28,148 +27,206 @@ class Orchestrator:
     async def stop(self):
         if self._poll_task:
             self._poll_task.cancel()
-        for agent_id, proc in list(self.running_agents.items()):
+        for run_id, proc in list(self.running_processes.items()):
             try:
                 proc.terminate()
             except ProcessLookupError:
                 pass
-        self.running_agents.clear()
+        self.running_processes.clear()
 
     async def _poll_loop(self):
         while True:
             try:
-                await self._check_schedules()
-                await self._dispatch_queued_jobs()
+                await self._check_task_schedules()
+                await self._check_flow_schedules()
+                await self._dispatch_queued_runs()
             except Exception as e:
                 print(f"[orchestrator] poll error: {e}")
             await asyncio.sleep(POLL_INTERVAL)
 
-    async def _check_schedules(self):
-        """Create jobs from due recurring schedules."""
+    async def _check_task_schedules(self):
+        """Create task runs from due task-level schedules."""
         now = datetime.now(timezone.utc)
         now_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
         db = await get_db()
         try:
             cursor = await db.execute(
-                "SELECT * FROM schedules WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?",
+                """SELECT * FROM tasks
+                   WHERE status = 'active' AND schedule IS NOT NULL
+                   AND schedule_enabled = 1 AND next_run_at IS NOT NULL
+                   AND next_run_at <= ?""",
                 (now_str,),
             )
-            schedules = await cursor.fetchall()
+            tasks = await cursor.fetchall()
 
-            for sched in schedules:
-                sched = dict(sched)
-                job_id = str(uuid.uuid4())
+            for task in tasks:
+                task = dict(task)
+                task_id = task["id"]
 
-                # Build title from template
-                run_count_cursor = await db.execute(
-                    "SELECT COUNT(*) FROM jobs WHERE schedule_id = ?", (sched["id"],)
+                # Get next run number
+                cursor = await db.execute(
+                    "SELECT COALESCE(MAX(run_number), 0) + 1 FROM task_runs WHERE task_id = ?",
+                    (task_id,),
                 )
-                run_count = (await run_count_cursor.fetchone())[0]
-                title = sched["title_template"].replace(
-                    "{date}", now.strftime("%Y-%m-%d")
-                ).replace("{n}", str(run_count + 1))
+                run_number = (await cursor.fetchone())[0]
+                run_id = str(uuid.uuid4())
 
                 await db.execute(
-                    """INSERT INTO jobs (id, title, prompt, model, priority, work_dir, project_id, permissions, assistant_id, schedule_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        job_id, title, sched["prompt"], sched["model"],
-                        sched["priority"], sched["work_dir"], sched["project_id"],
-                        sched["permissions"], sched["assistant_id"], sched["id"],
-                    ),
+                    """INSERT INTO task_runs (id, task_id, run_number, trigger, status)
+                       VALUES (?, ?, ?, 'schedule', 'queued')""",
+                    (run_id, task_id, run_number),
                 )
 
-                # Advance next_run_at past now (skip missed windows)
-                next_run = cron_parser.next_run_after(sched["cron_expression"], now)
+                # Advance next_run_at
+                next_run = cron_parser.next_run_after(task["schedule"], now)
                 next_run_str = next_run.strftime("%Y-%m-%dT%H:%M:%SZ")
 
                 await db.execute(
-                    "UPDATE schedules SET last_run_at = ?, next_run_at = ?, updated_at = datetime('now') WHERE id = ?",
-                    (now_str, next_run_str, sched["id"]),
+                    "UPDATE tasks SET last_run_at = ?, next_run_at = ?, updated_at = datetime('now') WHERE id = ?",
+                    (now_str, next_run_str, task_id),
                 )
                 await db.commit()
 
-                await self.sio.emit("job:updated", {"id": job_id, "status": "queued"})
-                await self.sio.emit("schedule:triggered", {"id": sched["id"], "job_id": job_id})
+                await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "queued"})
+                await self.sio.emit("task_run:started", {"id": run_id, "task_id": task_id, "trigger": "schedule"})
         finally:
             await db.close()
 
-    async def _dispatch_queued_jobs(self):
-        if len(self.running_agents) >= MAX_CONCURRENT_AGENTS:
+    async def _check_flow_schedules(self):
+        """Create task runs for root tasks in flows with due schedules."""
+        now = datetime.now(timezone.utc)
+        now_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        db = await get_db()
+        try:
+            cursor = await db.execute(
+                """SELECT * FROM flows
+                   WHERE archived = 0 AND schedule IS NOT NULL
+                   AND schedule_enabled = 1 AND next_run_at IS NOT NULL
+                   AND next_run_at <= ?""",
+                (now_str,),
+            )
+            flows = await cursor.fetchall()
+
+            for flow in flows:
+                flow = dict(flow)
+                flow_id = flow["id"]
+
+                # Find root tasks (no upstream deps) in this flow
+                cursor = await db.execute(
+                    """SELECT id FROM tasks
+                       WHERE flow_id = ? AND status = 'active'
+                       AND NOT EXISTS (
+                           SELECT 1 FROM task_dependencies td WHERE td.task_id = tasks.id
+                       )""",
+                    (flow_id,),
+                )
+                root_tasks = await cursor.fetchall()
+
+                for task_row in root_tasks:
+                    task_id = task_row["id"]
+                    cursor = await db.execute(
+                        "SELECT COALESCE(MAX(run_number), 0) + 1 FROM task_runs WHERE task_id = ?",
+                        (task_id,),
+                    )
+                    run_number = (await cursor.fetchone())[0]
+                    run_id = str(uuid.uuid4())
+
+                    await db.execute(
+                        """INSERT INTO task_runs (id, task_id, run_number, trigger, status)
+                           VALUES (?, ?, ?, 'schedule', 'queued')""",
+                        (run_id, task_id, run_number),
+                    )
+
+                    await self.sio.emit("task_run:started", {"id": run_id, "task_id": task_id, "trigger": "schedule"})
+
+                # Advance next_run_at for the flow
+                next_run = cron_parser.next_run_after(flow["schedule"], now)
+                next_run_str = next_run.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+                await db.execute(
+                    "UPDATE flows SET last_run_at = ?, next_run_at = ? WHERE id = ?",
+                    (now_str, next_run_str, flow_id),
+                )
+                await db.commit()
+        finally:
+            await db.close()
+
+    async def _dispatch_queued_runs(self):
+        if len(self.running_processes) >= MAX_CONCURRENT_RUNS:
             return
 
         db = await get_db()
         try:
-            slots = MAX_CONCURRENT_AGENTS - len(self.running_agents)
+            slots = MAX_CONCURRENT_RUNS - len(self.running_processes)
+            # Find queued runs where:
+            # - task is active
+            # - all upstream dependencies have a latest run with 'success' status (or no deps)
             cursor = await db.execute(
-                """SELECT * FROM jobs WHERE status = 'queued'
-                   AND (scheduled_for IS NULL OR scheduled_for <= datetime('now'))
+                """SELECT tr.*, t.prompt, t.model, t.work_dir, t.permissions, t.priority
+                   FROM task_runs tr
+                   JOIN tasks t ON t.id = tr.task_id
+                   WHERE tr.status = 'queued' AND t.status = 'active'
                    AND NOT EXISTS (
-                       SELECT 1 FROM job_dependencies jd
-                       JOIN jobs dep ON dep.id = jd.depends_on_job_id
-                       WHERE jd.job_id = jobs.id AND dep.status != 'done'
+                       SELECT 1 FROM task_dependencies td
+                       WHERE td.task_id = tr.task_id
+                       AND NOT EXISTS (
+                           SELECT 1 FROM task_runs dep_run
+                           WHERE dep_run.task_id = td.depends_on_task_id
+                           AND dep_run.status = 'success'
+                           AND dep_run.run_number = (
+                               SELECT MAX(run_number) FROM task_runs WHERE task_id = td.depends_on_task_id
+                           )
+                       )
                    )
-                   AND (parent_job_id IS NULL
-                        OR parent_job_id IN (SELECT id FROM jobs WHERE status = 'done'))
-                   ORDER BY priority DESC, created_at ASC LIMIT ?""",
+                   ORDER BY t.priority DESC, tr.started_at ASC LIMIT ?""",
                 (slots,),
             )
-            jobs = await cursor.fetchall()
+            runs = await cursor.fetchall()
 
-            for job in jobs:
-                await self._start_agent(db, dict(job))
+            for run in runs:
+                await self._start_run(db, dict(run))
         finally:
             await db.close()
 
-    async def _start_agent(self, db: aiosqlite.Connection, job: dict):
-        agent_id = str(uuid.uuid4())
-        job_id = job["id"]
+    async def _start_run(self, db: aiosqlite.Connection, run: dict):
+        run_id = run["id"]
+        task_id = run["task_id"]
 
         await db.execute(
-            "UPDATE jobs SET status = 'running', updated_at = datetime('now') WHERE id = ?",
-            (job_id,),
-        )
-        await db.execute(
-            "INSERT INTO agents (id, job_id, status) VALUES (?, ?, 'running')",
-            (agent_id, job_id),
+            "UPDATE task_runs SET status = 'running', started_at = datetime('now') WHERE id = ?",
+            (run_id,),
         )
         await db.commit()
 
-        await self.sio.emit("job:updated", {"id": job_id, "status": "running"})
-        await self.sio.emit("agent:started", {"id": agent_id, "job_id": job_id})
+        await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "running"})
+        await self.sio.emit("task_run:started", {"id": run_id, "task_id": task_id})
 
-        asyncio.create_task(self._run_agent(agent_id, job))
+        asyncio.create_task(self._execute_run(run_id, run))
 
     def _build_allowed_tools(self, permissions: dict) -> list[str]:
-        """Convert permission flags to Claude CLI --allowedTools patterns."""
         tools = []
         if permissions.get("file_read", True):
-            tools.append("Read")
-            tools.append("Glob")
-            tools.append("Grep")
+            tools.extend(["Read", "Glob", "Grep"])
         if permissions.get("file_write", False):
-            tools.append("Edit")
-            tools.append("Write")
+            tools.extend(["Edit", "Write"])
         if permissions.get("bash", False):
             tools.append("Bash")
         if permissions.get("web_search", False):
-            tools.append("WebSearch")
-            tools.append("WebFetch")
+            tools.extend(["WebSearch", "WebFetch"])
         if permissions.get("mcp", False):
             tools.append("mcp__*")
         return tools
 
-    async def _run_agent(self, agent_id: str, job: dict):
-        job_id = job["id"]
-        work_dir = job["work_dir"] or os.getcwd()
-        model = job["model"] or "claude-sonnet-4-20250514"
-        prompt = job["prompt"]
+    async def _execute_run(self, run_id: str, run: dict):
+        task_id = run["task_id"]
+        work_dir = run["work_dir"] or os.getcwd()
+        model = run["model"] or "claude-sonnet-4-20250514"
+        prompt = run["prompt"]
         start_time = datetime.now(timezone.utc)
         seq = 0
 
-        # Parse permissions
         try:
-            permissions = json.loads(job.get("permissions") or "{}")
+            permissions = json.loads(run.get("permissions") or "{}")
         except (json.JSONDecodeError, TypeError):
             permissions = DEFAULT_PERMISSIONS
 
@@ -181,7 +238,6 @@ class Orchestrator:
                 "--model", model,
             ]
 
-            # Add allowed tools based on permissions
             allowed_tools = self._build_allowed_tools(permissions)
             if allowed_tools:
                 for tool in allowed_tools:
@@ -195,13 +251,13 @@ class Orchestrator:
                 stderr=asyncio.subprocess.PIPE,
                 cwd=work_dir,
             )
-            self.running_agents[agent_id] = proc
+            self.running_processes[run_id] = proc
 
             db = await get_db()
             try:
                 await db.execute(
-                    "UPDATE agents SET pid = ? WHERE id = ?",
-                    (proc.pid, agent_id),
+                    "UPDATE task_runs SET pid = ? WHERE id = ?",
+                    (proc.pid, run_id),
                 )
                 await db.commit()
             finally:
@@ -215,7 +271,6 @@ class Orchestrator:
                 if not chunk:
                     break
                 buffer += chunk.decode("utf-8", errors="replace")
-                # Process complete lines
                 while "\n" in buffer:
                     line, buffer = buffer.split("\n", 1)
                     line = line.strip()
@@ -226,7 +281,6 @@ class Orchestrator:
                     content = line
                     output_type = "text"
 
-                    # Try to parse as JSON for stream-json format
                     try:
                         parsed = json.loads(line)
                         if isinstance(parsed, dict):
@@ -243,16 +297,16 @@ class Orchestrator:
                     db = await get_db()
                     try:
                         await db.execute(
-                            "INSERT INTO agent_output (agent_id, seq, type, content) VALUES (?, ?, ?, ?)",
-                            (agent_id, seq, output_type, content),
+                            "INSERT INTO task_run_output (task_run_id, seq, type, content) VALUES (?, ?, ?, ?)",
+                            (run_id, seq, output_type, content),
                         )
                         await db.commit()
                     finally:
                         await db.close()
 
-                    await self.sio.emit("agent:output", {
-                        "agent_id": agent_id,
-                        "job_id": job_id,
+                    await self.sio.emit("task_run:output", {
+                        "task_run_id": run_id,
+                        "task_id": task_id,
                         "seq": seq,
                         "type": output_type,
                         "content": content,
@@ -261,127 +315,177 @@ class Orchestrator:
             await proc.wait()
             exit_code = proc.returncode
 
-            # Read any stderr
             stderr_data = ""
             if proc.stderr:
                 stderr_bytes = await proc.stderr.read()
                 stderr_data = stderr_bytes.decode("utf-8", errors="replace").strip()
 
             elapsed = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-            status = "done" if exit_code == 0 else "failed"
+            status = "success" if exit_code == 0 else "failed"
 
             db = await get_db()
             try:
                 await db.execute(
-                    """UPDATE agents SET status = ?, exit_code = ?, duration_ms = ?,
+                    """UPDATE task_runs SET status = ?, exit_code = ?, duration_ms = ?,
                        num_turns = ?, finished_at = datetime('now'), error_message = ?
                        WHERE id = ?""",
-                    (status, exit_code, elapsed, seq, stderr_data or None, agent_id),
+                    (status, exit_code, elapsed, seq, stderr_data or None, run_id),
                 )
-                await db.execute(
-                    "UPDATE jobs SET status = ?, updated_at = datetime('now') WHERE id = ?",
-                    (status, job_id),
-                )
-                if status == "failed":
-                    await self._cascade_cancel_children(db, job_id)
+
+                if status == "success":
+                    await self._cascade_trigger_downstream(db, task_id)
+                else:
+                    await self._cascade_cancel_downstream(db, task_id)
+
                 await db.commit()
             finally:
                 await db.close()
 
-            await self.sio.emit("agent:finished", {
-                "id": agent_id,
-                "job_id": job_id,
+            await self.sio.emit("task_run:finished", {
+                "id": run_id,
+                "task_id": task_id,
                 "status": status,
                 "exit_code": exit_code,
                 "duration_ms": elapsed,
             })
-            await self.sio.emit("job:updated", {"id": job_id, "status": status})
+            await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": status})
 
         except Exception as e:
             elapsed = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
             db = await get_db()
             try:
                 await db.execute(
-                    """UPDATE agents SET status = 'failed', duration_ms = ?,
+                    """UPDATE task_runs SET status = 'failed', duration_ms = ?,
                        finished_at = datetime('now'), error_message = ? WHERE id = ?""",
-                    (elapsed, str(e), agent_id),
+                    (elapsed, str(e), run_id),
                 )
-                await db.execute(
-                    "UPDATE jobs SET status = 'failed', updated_at = datetime('now') WHERE id = ?",
-                    (job_id,),
-                )
-                await self._cascade_cancel_children(db, job_id)
+                await self._cascade_cancel_downstream(db, task_id)
                 await db.commit()
             finally:
                 await db.close()
 
-            await self.sio.emit("agent:finished", {
-                "id": agent_id,
-                "job_id": job_id,
+            await self.sio.emit("task_run:finished", {
+                "id": run_id,
+                "task_id": task_id,
                 "status": "failed",
                 "error_message": str(e),
             })
-            await self.sio.emit("job:updated", {"id": job_id, "status": "failed"})
+            await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "failed"})
         finally:
-            self.running_agents.pop(agent_id, None)
+            self.running_processes.pop(run_id, None)
 
-    async def _cascade_cancel_children(self, db: aiosqlite.Connection, parent_job_id: str):
-        """Recursively cancel all queued downstream jobs of a failed/cancelled parent."""
-        # Find jobs that depend on this parent via job_dependencies
+    async def _cascade_trigger_downstream(self, db: aiosqlite.Connection, completed_task_id: str):
+        """When a task run succeeds, check downstream tasks and queue runs if all deps are met."""
         cursor = await db.execute(
-            """SELECT DISTINCT jd.job_id FROM job_dependencies jd
-               JOIN jobs j ON j.id = jd.job_id
-               WHERE jd.depends_on_job_id = ? AND j.status = 'queued'""",
-            (parent_job_id,),
+            "SELECT DISTINCT task_id FROM task_dependencies WHERE depends_on_task_id = ?",
+            (completed_task_id,),
         )
-        children = await cursor.fetchall()
-        # Also check legacy parent_job_id column
-        cursor2 = await db.execute(
-            "SELECT id FROM jobs WHERE parent_job_id = ? AND status = 'queued'",
-            (parent_job_id,),
-        )
-        legacy_children = await cursor2.fetchall()
-        child_ids = {c["job_id"] for c in children} | {c["id"] for c in legacy_children}
-        for child_id in child_ids:
-            await db.execute(
-                "UPDATE jobs SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?",
-                (child_id,),
-            )
-            await self.sio.emit("job:updated", {"id": child_id, "status": "cancelled"})
-            await self._cascade_cancel_children(db, child_id)
+        downstream_tasks = await cursor.fetchall()
 
-    async def cancel_job(self, job_id: str):
+        for row in downstream_tasks:
+            downstream_id = row["task_id"]
+
+            # Check task is active
+            cursor = await db.execute(
+                "SELECT status FROM tasks WHERE id = ?", (downstream_id,)
+            )
+            task = await cursor.fetchone()
+            if not task or task["status"] != "active":
+                continue
+
+            # Check all upstream deps have a successful latest run
+            cursor = await db.execute(
+                """SELECT td.depends_on_task_id FROM task_dependencies td
+                   WHERE td.task_id = ?
+                   AND NOT EXISTS (
+                       SELECT 1 FROM task_runs tr
+                       WHERE tr.task_id = td.depends_on_task_id
+                       AND tr.status = 'success'
+                       AND tr.run_number = (
+                           SELECT MAX(run_number) FROM task_runs WHERE task_id = td.depends_on_task_id
+                       )
+                   )""",
+                (downstream_id,),
+            )
+            unmet_deps = await cursor.fetchall()
+            if unmet_deps:
+                continue
+
+            # Check no queued/running run already exists for this task
+            cursor = await db.execute(
+                "SELECT id FROM task_runs WHERE task_id = ? AND status IN ('queued', 'running')",
+                (downstream_id,),
+            )
+            if await cursor.fetchone():
+                continue
+
+            # All deps met — create a queued run
+            cursor = await db.execute(
+                "SELECT COALESCE(MAX(run_number), 0) + 1 FROM task_runs WHERE task_id = ?",
+                (downstream_id,),
+            )
+            run_number = (await cursor.fetchone())[0]
+            run_id = str(uuid.uuid4())
+
+            await db.execute(
+                """INSERT INTO task_runs (id, task_id, run_number, trigger, status)
+                   VALUES (?, ?, ?, 'dependency', 'queued')""",
+                (run_id, downstream_id, run_number),
+            )
+
+            await self.sio.emit("task:updated", {"id": downstream_id, "latest_run_status": "queued"})
+
+    async def _cascade_cancel_downstream(self, db: aiosqlite.Connection, failed_task_id: str):
+        """Recursively cancel queued downstream runs when a task fails."""
+        cursor = await db.execute(
+            """SELECT DISTINCT tr.id, tr.task_id FROM task_runs tr
+               JOIN task_dependencies td ON td.task_id = tr.task_id
+               WHERE td.depends_on_task_id = ? AND tr.status = 'queued'""",
+            (failed_task_id,),
+        )
+        queued_runs = await cursor.fetchall()
+
+        for row in queued_runs:
+            run_id = row["id"]
+            task_id = row["task_id"]
+            await db.execute(
+                "UPDATE task_runs SET status = 'cancelled', finished_at = datetime('now') WHERE id = ?",
+                (run_id,),
+            )
+            await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "cancelled"})
+            await self.sio.emit("task_run:finished", {"id": run_id, "task_id": task_id, "status": "cancelled"})
+            # Recurse
+            await self._cascade_cancel_downstream(db, task_id)
+
+    async def cancel_task_run(self, task_id: str):
+        """Cancel the latest running/queued run for a task."""
         db = await get_db()
         try:
-            # Find running agent for this job
             cursor = await db.execute(
-                "SELECT id FROM agents WHERE job_id = ? AND status = 'running'",
-                (job_id,),
+                "SELECT id FROM task_runs WHERE task_id = ? AND status IN ('running', 'queued') ORDER BY run_number DESC LIMIT 1",
+                (task_id,),
             )
-            agent = await cursor.fetchone()
+            run = await cursor.fetchone()
 
-            if agent:
-                agent_id = agent["id"]
-                proc = self.running_agents.get(agent_id)
+            if run:
+                run_id = run["id"]
+                proc = self.running_processes.get(run_id)
                 if proc:
                     try:
                         proc.terminate()
                     except ProcessLookupError:
                         pass
-                    self.running_agents.pop(agent_id, None)
+                    self.running_processes.pop(run_id, None)
 
                 await db.execute(
-                    "UPDATE agents SET status = 'cancelled', finished_at = datetime('now') WHERE id = ?",
-                    (agent_id,),
+                    "UPDATE task_runs SET status = 'cancelled', finished_at = datetime('now') WHERE id = ?",
+                    (run_id,),
                 )
+                await self._cascade_cancel_downstream(db, task_id)
+                await db.commit()
 
-            await db.execute(
-                "UPDATE jobs SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?",
-                (job_id,),
-            )
-            await self._cascade_cancel_children(db, job_id)
-            await db.commit()
+                await self.sio.emit("task_run:finished", {"id": run_id, "task_id": task_id, "status": "cancelled"})
+
+            await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "cancelled"})
         finally:
             await db.close()
-
-        await self.sio.emit("job:updated", {"id": job_id, "status": "cancelled"})

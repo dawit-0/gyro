@@ -61,7 +61,7 @@ export default function AssistantCard({ assistant, onSpawn, onEdit, onDelete }: 
       </div>
       <div className="assistant-card-actions">
         <button className="btn btn-primary btn-sm" onClick={() => onSpawn(assistant)}>
-          Spawn Job
+          Spawn Task
         </button>
         <button className="btn btn-secondary btn-sm" onClick={() => onEdit(assistant)}>
           Edit

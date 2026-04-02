@@ -1,51 +1,50 @@
 import React, { useState } from "react";
-import { Project, Job, api } from "../api";
+import { Flow, Task, api } from "../api";
 
 interface Props {
-  projects: Project[];
-  selectedProject: string | null;
-  onSelectProject: (id: string | null) => void;
-  onProjectsChange: () => void;
-  jobs: Job[];
+  flows: Flow[];
+  selectedFlow: string | null;
+  onSelectFlow: (id: string | null) => void;
+  onFlowsChange: () => void;
+  tasks: Task[];
 }
 
 export default function Sidebar({
-  projects,
-  selectedProject,
-  onSelectProject,
-  onProjectsChange,
-  jobs,
+  flows,
+  selectedFlow,
+  onSelectFlow,
+  onFlowsChange,
+  tasks,
 }: Props) {
   const [newName, setNewName] = useState("");
   const [showForm, setShowForm] = useState(false);
 
-  const queuedJobs = jobs.filter((j) => j.status === "queued");
-
   async function handleCreate() {
     if (!newName.trim()) return;
-    await api.projects.create({ name: newName.trim() });
+    await api.flows.create({ name: newName.trim() });
     setNewName("");
     setShowForm(false);
-    onProjectsChange();
+    onFlowsChange();
   }
 
   return (
     <aside className="sidebar">
       <div className="sidebar-section">
-        <h3>Projects</h3>
+        <h3>Flows</h3>
         <div
-          className={`project-item ${selectedProject === null ? "active" : ""}`}
-          onClick={() => onSelectProject(null)}
+          className={`project-item ${selectedFlow === null ? "active" : ""}`}
+          onClick={() => onSelectFlow(null)}
         >
-          All Jobs
+          All Tasks
         </div>
-        {projects.map((p) => (
+        {flows.map((f) => (
           <div
-            key={p.id}
-            className={`project-item ${selectedProject === p.id ? "active" : ""}`}
-            onClick={() => onSelectProject(p.id)}
+            key={f.id}
+            className={`project-item ${selectedFlow === f.id ? "active" : ""}`}
+            onClick={() => onSelectFlow(f.id)}
           >
-            {p.name}
+            <span>{f.name}</span>
+            {f.schedule && <span className="flow-schedule-badge" title={f.schedule}>&#x23f0;</span>}
           </div>
         ))}
         {showForm ? (
@@ -53,7 +52,7 @@ export default function Sidebar({
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="Project name"
+              placeholder="Flow name"
               onKeyDown={(e) => e.key === "Enter" && handleCreate()}
               style={{
                 width: "100%",
@@ -74,22 +73,24 @@ export default function Sidebar({
             style={{ color: "var(--accent)", marginTop: 4 }}
             onClick={() => setShowForm(true)}
           >
-            + New Project
+            + New Flow
           </div>
         )}
       </div>
 
-      {queuedJobs.length > 0 && (
-        <div className="sidebar-section">
-          <h3>Queue ({queuedJobs.length})</h3>
-          {queuedJobs.map((j) => (
-            <div key={j.id} className="queue-item">
-              <div className="queue-title">{j.title}</div>
-              <div className="queue-meta">{j.model.split("-").slice(0, 2).join("-")}</div>
-            </div>
-          ))}
+      <div className="sidebar-section">
+        <h3>Summary</h3>
+        <div className="sidebar-summary">
+          <div className="summary-item">
+            <span className="summary-count">{tasks.length}</span>
+            <span className="summary-label">Tasks</span>
+          </div>
+          <div className="summary-item">
+            <span className="summary-count">{tasks.filter((t) => t.schedule).length}</span>
+            <span className="summary-label">Scheduled</span>
+          </div>
         </div>
-      )}
+      </div>
     </aside>
   );
 }

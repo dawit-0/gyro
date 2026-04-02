@@ -1,24 +1,15 @@
 import React from "react";
-import { Job } from "../api";
+import { Task } from "../api";
 
 interface Props {
-  jobs: Job[];
-  view: "jobs" | "assistants" | "schedules" | "agentflow";
-  onViewChange: (view: "jobs" | "assistants" | "schedules" | "agentflow") => void;
-  onNewJob: () => void;
+  tasks: Task[];
+  view: "tasks" | "assistants" | "taskflow";
+  onViewChange: (view: "tasks" | "assistants" | "taskflow") => void;
+  onNewTask: () => void;
   onNewAssistant: () => void;
-  onNewSchedule: () => void;
 }
 
-export default function Header({ jobs, view, onViewChange, onNewJob, onNewAssistant, onNewSchedule }: Props) {
-  const running = jobs.filter((j) => j.status === "running").length;
-  const queued = jobs.filter((j) => j.status === "queued").length;
-  const done = jobs.filter((j) => j.status === "done").length;
-  const failed = jobs.filter((j) => j.status === "failed").length;
-  const scheduled = jobs.filter(
-    (j) => j.status === "queued" && j.scheduled_for && new Date(j.scheduled_for) > new Date()
-  ).length;
-
+export default function Header({ tasks, view, onViewChange, onNewTask, onNewAssistant }: Props) {
   return (
     <header className="header">
       <div className="header-left">
@@ -27,10 +18,10 @@ export default function Header({ jobs, view, onViewChange, onNewJob, onNewAssist
         </div>
         <div className="header-tabs">
           <button
-            className={`header-tab${view === "jobs" ? " active" : ""}`}
-            onClick={() => onViewChange("jobs")}
+            className={`header-tab${view === "tasks" ? " active" : ""}`}
+            onClick={() => onViewChange("tasks")}
           >
-            Jobs
+            Tasks
           </button>
           <button
             className={`header-tab${view === "assistants" ? " active" : ""}`}
@@ -39,58 +30,31 @@ export default function Header({ jobs, view, onViewChange, onNewJob, onNewAssist
             Assistants
           </button>
           <button
-            className={`header-tab${view === "agentflow" ? " active" : ""}`}
-            onClick={() => onViewChange("agentflow")}
+            className={`header-tab${view === "taskflow" ? " active" : ""}`}
+            onClick={() => onViewChange("taskflow")}
           >
-            AgentFlow
-          </button>
-          <button
-            className={`header-tab${view === "schedules" ? " active" : ""}`}
-            onClick={() => onViewChange("schedules")}
-          >
-            Schedules
+            TaskFlow
           </button>
         </div>
       </div>
-      {(view === "jobs" || view === "agentflow") && (
-        <div className="header-stats">
-          {running > 0 && (
-            <span className="stat-badge">
-              <span className="dot running" /> {running} running
-            </span>
-          )}
-          {queued > 0 && (
-            <span className="stat-badge">
-              <span className="dot queued" /> {queued - scheduled} queued
-            </span>
-          )}
-          {scheduled > 0 && (
-            <span className="stat-badge">
-              <span className="dot scheduled" /> {scheduled} scheduled
-            </span>
-          )}
+      <div className="header-stats">
+        <span className="stat-badge">
+          {tasks.length} task{tasks.length !== 1 ? "s" : ""}
+        </span>
+        {tasks.filter((t) => t.schedule).length > 0 && (
           <span className="stat-badge">
-            <span className="dot done" /> {done} done
+            <span className="dot scheduled" /> {tasks.filter((t) => t.schedule).length} scheduled
           </span>
-          {failed > 0 && (
-            <span className="stat-badge">
-              <span className="dot failed" /> {failed} failed
-            </span>
-          )}
-        </div>
-      )}
+        )}
+      </div>
       <div className="header-actions">
-        {view === "jobs" || view === "agentflow" ? (
-          <button className="btn btn-primary" onClick={onNewJob}>
-            + New Job
-          </button>
-        ) : view === "assistants" ? (
-          <button className="btn btn-primary" onClick={onNewAssistant}>
-            + New Assistant
+        {view === "tasks" || view === "taskflow" ? (
+          <button className="btn btn-primary" onClick={onNewTask}>
+            + New Task
           </button>
         ) : (
-          <button className="btn btn-primary" onClick={onNewSchedule}>
-            + New Schedule
+          <button className="btn btn-primary" onClick={onNewAssistant}>
+            + New Assistant
           </button>
         )}
       </div>

@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { api, Project, Assistant, ContextItem, Permissions, PERMISSION_PRESETS } from "../api";
+import { api, Flow, Assistant, ContextItem, Permissions, PERMISSION_PRESETS } from "../api";
 
 interface Props {
-  projects: Project[];
+  flows: Flow[];
   assistant: Assistant | null;
   onClose: () => void;
   onSaved: () => void;
@@ -14,7 +14,7 @@ const MODELS = [
   { value: "claude-haiku-3-5-20241022", label: "Claude Haiku" },
 ];
 
-export default function AssistantForm({ projects, assistant, onClose, onSaved }: Props) {
+export default function AssistantForm({ flows, assistant, onClose, onSaved }: Props) {
   const [name, setName] = useState(assistant?.name || "");
   const [description, setDescription] = useState(assistant?.description || "");
   const [instructions, setInstructions] = useState(assistant?.instructions || "");
@@ -27,7 +27,7 @@ export default function AssistantForm({ projects, assistant, onClose, onSaved }:
   );
   const [showPermDetails, setShowPermDetails] = useState(false);
   const [defaultWorkDir, setDefaultWorkDir] = useState(assistant?.default_work_dir || "");
-  const [defaultProjectId, setDefaultProjectId] = useState(assistant?.default_project_id || "");
+  const [defaultFlowId, setDefaultFlowId] = useState(assistant?.default_flow_id || "");
   const [submitting, setSubmitting] = useState(false);
 
   function addContextItem(type: "file" | "url" | "text") {
@@ -59,7 +59,7 @@ export default function AssistantForm({ projects, assistant, onClose, onSaved }:
         default_model: defaultModel,
         default_permissions: permissions,
         default_work_dir: defaultWorkDir.trim(),
-        default_project_id: defaultProjectId || undefined,
+        default_flow_id: defaultFlowId || undefined,
       };
       if (assistant) {
         await api.assistants.update(assistant.id, data);
@@ -104,7 +104,7 @@ export default function AssistantForm({ projects, assistant, onClose, onSaved }:
             <textarea
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              placeholder="Persona and instructions for the agent. e.g. 'You are a senior code reviewer. Focus on correctness, performance, and security...'"
+              placeholder="Persona and instructions for the agent..."
               className="textarea-tall"
             />
           </div>
@@ -182,12 +182,12 @@ export default function AssistantForm({ projects, assistant, onClose, onSaved }:
           </div>
 
           <div className="form-group">
-            <label>Default Project (optional)</label>
-            <select value={defaultProjectId} onChange={(e) => setDefaultProjectId(e.target.value)}>
+            <label>Default Flow (optional)</label>
+            <select value={defaultFlowId} onChange={(e) => setDefaultFlowId(e.target.value)}>
               <option value="">None</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
+              {flows.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
                 </option>
               ))}
             </select>

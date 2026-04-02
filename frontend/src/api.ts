@@ -44,21 +44,49 @@ export const PERMISSION_PRESETS: Record<string, Permissions> = {
   },
 };
 
-export interface Job {
+export interface Task {
   id: string;
   title: string;
   prompt: string;
-  status: string;
+  status: "active" | "paused";
   priority: number;
   model: string;
   work_dir: string;
-  project_id: string | null;
+  flow_id: string | null;
+  assistant_id: string | null;
   permissions: Permissions;
-  scheduled_for: string | null;
-  schedule_id: string | null;
-  parent_job_id: string | null;
+  schedule: string | null;
+  schedule_enabled: boolean;
+  next_run_at: string | null;
+  last_run_at: string | null;
   created_at: string;
   updated_at: string;
+  latest_run?: TaskRun | null;
+}
+
+export interface TaskRun {
+  id: string;
+  task_id: string;
+  run_number: number;
+  trigger: "manual" | "schedule" | "dependency";
+  status: "queued" | "running" | "success" | "failed" | "cancelled";
+  pid: number | null;
+  exit_code: number | null;
+  cost_usd: number;
+  duration_ms: number;
+  num_turns: number;
+  started_at: string;
+  finished_at: string | null;
+  error_message: string | null;
+}
+
+export interface TaskRunOutput {
+  id: number;
+  task_run_id: string;
+  seq: number;
+  type: string;
+  content: string;
+  timestamp: string;
 }
 
 export interface DagNode {
@@ -66,6 +94,9 @@ export interface DagNode {
   title: string;
   status: string;
   model: string;
+  schedule: string | null;
+  latest_run_status: string | null;
+  latest_run_number: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -80,52 +111,14 @@ export interface DagGraph {
   edges: DagEdge[];
 }
 
-export interface Schedule {
-  id: string;
-  name: string;
-  cron_expression: string;
-  title_template: string;
-  prompt: string;
-  model: string;
-  priority: number;
-  work_dir: string;
-  project_id: string | null;
-  permissions: Permissions;
-  assistant_id: string | null;
-  enabled: boolean;
-  last_run_at: string | null;
-  next_run_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Agent {
-  id: string;
-  job_id: string;
-  pid: number | null;
-  status: string;
-  exit_code: number | null;
-  cost_usd: number;
-  duration_ms: number;
-  num_turns: number;
-  started_at: string;
-  finished_at: string | null;
-  error_message: string | null;
-}
-
-export interface AgentOutput {
-  id: number;
-  agent_id: string;
-  seq: number;
-  type: string;
-  content: string;
-  timestamp: string;
-}
-
-export interface Project {
+export interface Flow {
   id: string;
   name: string;
   description: string;
+  schedule: string | null;
+  schedule_enabled: boolean;
+  next_run_at: string | null;
+  last_run_at: string | null;
   created_at: string;
 }
 
@@ -145,60 +138,102 @@ export interface Assistant {
   default_model: string;
   default_permissions: Permissions;
   default_work_dir: string;
-  default_project_id: string | null;
+  default_flow_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export const api = {
-  jobs: {
-    list: (projectId?: string) =>
-      request<Job[]>(`/jobs${projectId ? `?project_id=${projectId}` : ""}`),
-    get: (id: string) => request<Job>(`/jobs/${id}`),
+  tasks: {
+    list: (flowId?: string) =>
+      request<Task[]>(`/tasks${flowId ? `?flow_id=${flowId}` : ""}`),
+    get: (id: string) => request<Task>(`/tasks/${id}`),
     create: (data: {
       title: string;
       prompt: string;
       model?: string;
       priority?: number;
       work_dir?: string;
-      project_id?: string;
+      flow_id?: string;
       permissions?: Permissions;
-      scheduled_for?: string;
-      parent_job_id?: string;
+      schedule?: string;
+      assistant_id?: string;
       depends_on?: string[];
-    }) => request<Job>("/jobs", { method: "POST", body: JSON.stringify(data) }),
+    }) => request<Task>("/tasks", { method: "POST", body: JSON.stringify(data) }),
+    update: (
+      id: string,
+      data: Partial<{
+        title: string;
+        prompt: string;
+        status: string;
+        priority: number;
+        model: string;
+        work_dir: string;
+        flow_id: string;
+        permissions: Permissions;
+        schedule: string;
+        schedule_enabled: boolean;
+      }>
+    ) =>
+      request<Task>(`/tasks/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    trigger: (id: string) =>
+      request<TaskRun>(`/tasks/${id}/trigger`, { method: "POST" }),
     cancel: (id: string) =>
-      request<{ ok: boolean }>(`/jobs/${id}/cancel`, { method: "POST" }),
+      request<{ ok: boolean }>(`/tasks/${id}/cancel`, { method: "POST" }),
     delete: (id: string) =>
-      request<{ ok: boolean }>(`/jobs/${id}`, { method: "DELETE" }),
-    children: (id: string) => request<Job[]>(`/jobs/${id}/children`),
-    dag: (projectId?: string) =>
-      request<DagGraph>(`/jobs/dag${projectId ? `?project_id=${projectId}` : ""}`),
-    addDependencies: (jobId: string, dependsOn: string[]) =>
-      request<{ ok: boolean }>(`/jobs/${jobId}/dependencies`, {
+      request<{ ok: boolean }>(`/tasks/${id}`, { method: "DELETE" }),
+    runs: (id: string) => request<TaskRun[]>(`/tasks/${id}/runs`),
+    dag: (flowId?: string) =>
+      request<DagGraph>(`/tasks/dag${flowId ? `?flow_id=${flowId}` : ""}`),
+    dependencies: (id: string) =>
+      request<{ task_id: string; depends_on: string[] }>(`/tasks/${id}/dependencies`),
+    addDependencies: (taskId: string, dependsOn: string[]) =>
+      request<{ ok: boolean }>(`/tasks/${taskId}/dependencies`, {
         method: "POST",
         body: JSON.stringify({ depends_on: dependsOn }),
       }),
-    removeDependency: (jobId: string, depId: string) =>
-      request<{ ok: boolean }>(`/jobs/${jobId}/dependencies/${depId}`, {
+    removeDependency: (taskId: string, depId: string) =>
+      request<{ ok: boolean }>(`/tasks/${taskId}/dependencies/${depId}`, {
         method: "DELETE",
       }),
   },
-  agents: {
-    list: (jobId?: string) =>
-      request<Agent[]>(`/agents${jobId ? `?job_id=${jobId}` : ""}`),
-    get: (id: string) => request<Agent>(`/agents/${id}`),
-    output: (id: string) => request<AgentOutput[]>(`/agents/${id}/output`),
+  taskRuns: {
+    list: (taskId?: string) =>
+      request<TaskRun[]>(`/task-runs${taskId ? `?task_id=${taskId}` : ""}`),
+    get: (id: string) => request<TaskRun>(`/task-runs/${id}`),
+    output: (id: string) => request<TaskRunOutput[]>(`/task-runs/${id}/output`),
   },
-  projects: {
-    list: () => request<Project[]>("/projects"),
-    create: (data: { name: string; description?: string }) =>
-      request<Project>("/projects", {
+  flows: {
+    list: () => request<Flow[]>("/flows"),
+    get: (id: string) => request<Flow>(`/flows/${id}`),
+    create: (data: { name: string; description?: string; schedule?: string }) =>
+      request<Flow>("/flows", {
         method: "POST",
         body: JSON.stringify(data),
       }),
+    update: (
+      id: string,
+      data: Partial<{
+        name: string;
+        description: string;
+        schedule: string;
+        schedule_enabled: boolean;
+      }>
+    ) =>
+      request<Flow>(`/flows/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
     delete: (id: string) =>
-      request<{ ok: boolean }>(`/projects/${id}`, { method: "DELETE" }),
+      request<{ ok: boolean }>(`/flows/${id}`, { method: "DELETE" }),
+    trigger: (id: string) =>
+      request<{ triggered: number; runs: Array<{ id: string; task_id: string }> }>(
+        `/flows/${id}/trigger`,
+        { method: "POST" }
+      ),
   },
   assistants: {
     list: () => request<Assistant[]>("/assistants"),
@@ -211,7 +246,7 @@ export const api = {
       default_model?: string;
       default_permissions?: Permissions;
       default_work_dir?: string;
-      default_project_id?: string;
+      default_flow_id?: string;
     }) =>
       request<Assistant>("/assistants", {
         method: "POST",
@@ -227,7 +262,7 @@ export const api = {
         default_model: string;
         default_permissions: Permissions;
         default_work_dir: string;
-        default_project_id: string;
+        default_flow_id: string;
       }>
     ) =>
       request<Assistant>(`/assistants/${id}`, {
@@ -244,61 +279,15 @@ export const api = {
         model?: string;
         priority?: number;
         work_dir?: string;
-        project_id?: string;
+        flow_id?: string;
         permissions?: Permissions;
-        scheduled_for?: string;
-        parent_job_id?: string;
         depends_on?: string[];
+        trigger?: boolean;
       }
     ) =>
-      request<Job>(`/assistants/${id}/spawn`, {
+      request<Task>(`/assistants/${id}/spawn`, {
         method: "POST",
         body: JSON.stringify(data),
       }),
-  },
-  schedules: {
-    list: () => request<Schedule[]>("/schedules"),
-    get: (id: string) => request<Schedule>(`/schedules/${id}`),
-    create: (data: {
-      name: string;
-      cron_expression: string;
-      title_template: string;
-      prompt: string;
-      model?: string;
-      priority?: number;
-      work_dir?: string;
-      project_id?: string;
-      permissions?: Permissions;
-      assistant_id?: string;
-    }) =>
-      request<Schedule>("/schedules", {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
-    update: (
-      id: string,
-      data: Partial<{
-        name: string;
-        cron_expression: string;
-        title_template: string;
-        prompt: string;
-        model: string;
-        priority: number;
-        work_dir: string;
-        project_id: string;
-        permissions: Permissions;
-        assistant_id: string;
-        enabled: boolean;
-      }>
-    ) =>
-      request<Schedule>(`/schedules/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(data),
-      }),
-    delete: (id: string) =>
-      request<{ ok: boolean }>(`/schedules/${id}`, { method: "DELETE" }),
-    trigger: (id: string) =>
-      request<Job>(`/schedules/${id}/trigger`, { method: "POST" }),
-    history: (id: string) => request<Job[]>(`/schedules/${id}/history`),
   },
 };
