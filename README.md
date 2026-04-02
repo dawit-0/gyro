@@ -1,6 +1,6 @@
 # <span style="color: #228B22;">GYRO</span>
 
-A local webapp for orchestrating Claude Code agents.
+A local webapp for orchestration of Claude agents.
 
 ## Architecture
 
