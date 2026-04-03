@@ -43,6 +43,8 @@ class TaskCreate(BaseModel):
     schedule: Optional[str] = None
     assistant_id: Optional[str] = None
     depends_on: Optional[list[str]] = None
+    max_retries: int = 0
+    retry_delay_seconds: int = 10
 
 
 class TaskUpdate(BaseModel):
@@ -56,6 +58,8 @@ class TaskUpdate(BaseModel):
     permissions: Optional[dict] = None
     schedule: Optional[str] = None
     schedule_enabled: Optional[bool] = None
+    max_retries: Optional[int] = None
+    retry_delay_seconds: Optional[int] = None
 
 
 class TaskTrigger(BaseModel):

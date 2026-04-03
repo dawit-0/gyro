@@ -46,8 +46,10 @@ async def get_dag(flow_id: str = None):
     try:
         if flow_id:
             cursor = await db.execute(
-                """SELECT t.id, t.title, t.status, t.model, t.schedule, t.created_at, t.updated_at,
-                          tr.status as latest_run_status, tr.run_number as latest_run_number
+                """SELECT t.id, t.title, t.status, t.model, t.schedule, t.max_retries, t.retry_delay_seconds,
+                          t.created_at, t.updated_at,
+                          tr.status as latest_run_status, tr.run_number as latest_run_number,
+                          tr.attempt_number, tr.trigger as latest_run_trigger
                    FROM tasks t
                    LEFT JOIN task_runs tr ON tr.task_id = t.id AND tr.run_number = (
                        SELECT MAX(run_number) FROM task_runs WHERE task_id = t.id
@@ -57,8 +59,10 @@ async def get_dag(flow_id: str = None):
             )
         else:
             cursor = await db.execute(
-                """SELECT t.id, t.title, t.status, t.model, t.schedule, t.created_at, t.updated_at,
-                          tr.status as latest_run_status, tr.run_number as latest_run_number
+                """SELECT t.id, t.title, t.status, t.model, t.schedule, t.max_retries, t.retry_delay_seconds,
+                          t.created_at, t.updated_at,
+                          tr.status as latest_run_status, tr.run_number as latest_run_number,
+                          tr.attempt_number, tr.trigger as latest_run_trigger
                    FROM tasks t
                    LEFT JOIN task_runs tr ON tr.task_id = t.id AND tr.run_number = (
                        SELECT MAX(run_number) FROM task_runs WHERE task_id = t.id
@@ -159,11 +163,12 @@ async def create_task(body: TaskCreate):
 
         await db.execute(
             """INSERT INTO tasks (id, title, prompt, model, priority, work_dir, flow_id,
-                                  assistant_id, permissions, schedule, next_run_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                  assistant_id, permissions, schedule, next_run_at,
+                                  max_retries, retry_delay_seconds)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (task_id, body.title, body.prompt, body.model, body.priority,
              body.work_dir, body.flow_id, body.assistant_id, permissions_json,
-             body.schedule, next_run_at),
+             body.schedule, next_run_at, body.max_retries, body.retry_delay_seconds),
         )
 
         for dep_id in depends_on:
@@ -261,6 +266,14 @@ async def trigger_task(task_id: str, body: TaskTrigger = None):
         return dict(await cursor.fetchone())
     finally:
         await db.close()
+
+
+@router.post("/{task_id}/retry")
+async def retry_task(task_id: str):
+    """Retry the latest failed run for this task."""
+    from main import orchestrator
+    result = await orchestrator.retry_task_run(task_id)
+    return result
 
 
 @router.get("/{task_id}/runs")

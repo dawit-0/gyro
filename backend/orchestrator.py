@@ -335,7 +335,10 @@ class Orchestrator:
                 if status == "success":
                     await self._cascade_trigger_downstream(db, task_id)
                 else:
-                    await self._cascade_cancel_downstream(db, task_id)
+                    # Check if auto-retry is configured
+                    retried = await self._maybe_auto_retry(db, run_id, task_id)
+                    if not retried:
+                        await self._cascade_cancel_downstream(db, task_id)
 
                 await db.commit()
             finally:
@@ -359,7 +362,9 @@ class Orchestrator:
                        finished_at = datetime('now'), error_message = ? WHERE id = ?""",
                     (elapsed, str(e), run_id),
                 )
-                await self._cascade_cancel_downstream(db, task_id)
+                retried = await self._maybe_auto_retry(db, run_id, task_id)
+                if not retried:
+                    await self._cascade_cancel_downstream(db, task_id)
                 await db.commit()
             finally:
                 await db.close()
@@ -373,6 +378,143 @@ class Orchestrator:
             await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "failed"})
         finally:
             self.running_processes.pop(run_id, None)
+
+    async def _maybe_auto_retry(self, db: aiosqlite.Connection, failed_run_id: str, task_id: str) -> bool:
+        """Check if the failed run should be auto-retried. Returns True if a retry was queued."""
+        # Get task retry config
+        cursor = await db.execute(
+            "SELECT max_retries, retry_delay_seconds FROM tasks WHERE id = ?", (task_id,)
+        )
+        task = await cursor.fetchone()
+        if not task or not task["max_retries"] or task["max_retries"] <= 0:
+            return False
+
+        # Get the current attempt number of the failed run
+        cursor = await db.execute(
+            "SELECT attempt_number FROM task_runs WHERE id = ?", (failed_run_id,)
+        )
+        run = await cursor.fetchone()
+        attempt = run["attempt_number"] if run and run["attempt_number"] else 1
+
+        if attempt >= task["max_retries"]:
+            return False
+
+        # Schedule a retry
+        delay = task["retry_delay_seconds"] or 10
+        asyncio.create_task(self._delayed_retry(task_id, failed_run_id, attempt + 1, delay))
+        return True
+
+    async def _delayed_retry(self, task_id: str, failed_run_id: str, attempt: int, delay: int):
+        """Wait for delay then queue a retry run."""
+        await asyncio.sleep(delay)
+        db = await get_db()
+        try:
+            cursor = await db.execute(
+                "SELECT COALESCE(MAX(run_number), 0) + 1 FROM task_runs WHERE task_id = ?",
+                (task_id,),
+            )
+            run_number = (await cursor.fetchone())[0]
+            run_id = str(uuid.uuid4())
+
+            await db.execute(
+                """INSERT INTO task_runs (id, task_id, run_number, trigger, status, attempt_number, retry_of_run_id)
+                   VALUES (?, ?, ?, 'retry', 'queued', ?, ?)""",
+                (run_id, task_id, run_number, attempt, failed_run_id),
+            )
+            await db.commit()
+
+            await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "queued"})
+            await self.sio.emit("task_run:started", {"id": run_id, "task_id": task_id, "trigger": "retry"})
+        finally:
+            await db.close()
+
+    async def retry_task_run(self, task_id: str):
+        """Manually retry the latest failed run for a task, then cascade downstream."""
+        db = await get_db()
+        try:
+            # Get the latest failed run
+            cursor = await db.execute(
+                "SELECT * FROM task_runs WHERE task_id = ? ORDER BY run_number DESC LIMIT 1",
+                (task_id,),
+            )
+            last_run = await cursor.fetchone()
+
+            cursor = await db.execute(
+                "SELECT COALESCE(MAX(run_number), 0) + 1 FROM task_runs WHERE task_id = ?",
+                (task_id,),
+            )
+            run_number = (await cursor.fetchone())[0]
+            run_id = str(uuid.uuid4())
+
+            retry_of = last_run["id"] if last_run else None
+            attempt = (last_run["attempt_number"] + 1) if last_run and last_run["attempt_number"] else 1
+
+            await db.execute(
+                """INSERT INTO task_runs (id, task_id, run_number, trigger, status, attempt_number, retry_of_run_id)
+                   VALUES (?, ?, ?, 'retry', 'queued', ?, ?)""",
+                (run_id, task_id, run_number, attempt, retry_of),
+            )
+            await db.commit()
+
+            await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "queued"})
+            return {"id": run_id, "task_id": task_id, "run_number": run_number}
+        finally:
+            await db.close()
+
+    async def resume_flow(self, flow_id: str):
+        """Resume a flow by retrying all failed/cancelled leaf tasks (tasks whose failure stopped the flow)."""
+        db = await get_db()
+        try:
+            # Find all tasks in this flow whose latest run is failed or cancelled
+            cursor = await db.execute(
+                """SELECT t.id FROM tasks t
+                   JOIN task_runs tr ON tr.task_id = t.id AND tr.run_number = (
+                       SELECT MAX(run_number) FROM task_runs WHERE task_id = t.id
+                   )
+                   WHERE t.flow_id = ? AND t.status = 'active'
+                   AND tr.status IN ('failed', 'cancelled')
+                   AND NOT EXISTS (
+                       SELECT 1 FROM task_dependencies td
+                       JOIN task_runs dep_run ON dep_run.task_id = td.depends_on_task_id
+                       AND dep_run.run_number = (
+                           SELECT MAX(run_number) FROM task_runs WHERE task_id = td.depends_on_task_id
+                       )
+                       WHERE td.task_id = t.id AND dep_run.status IN ('failed', 'cancelled')
+                   )""",
+                (flow_id,),
+            )
+            tasks_to_retry = await cursor.fetchall()
+            created_runs = []
+
+            for task_row in tasks_to_retry:
+                task_id = task_row["id"]
+                cursor = await db.execute(
+                    "SELECT * FROM task_runs WHERE task_id = ? ORDER BY run_number DESC LIMIT 1",
+                    (task_id,),
+                )
+                last_run = await cursor.fetchone()
+
+                cursor = await db.execute(
+                    "SELECT COALESCE(MAX(run_number), 0) + 1 FROM task_runs WHERE task_id = ?",
+                    (task_id,),
+                )
+                run_number = (await cursor.fetchone())[0]
+                run_id = str(uuid.uuid4())
+
+                retry_of = last_run["id"] if last_run else None
+
+                await db.execute(
+                    """INSERT INTO task_runs (id, task_id, run_number, trigger, status, attempt_number, retry_of_run_id)
+                       VALUES (?, ?, ?, 'retry', 'queued', 1, ?)""",
+                    (run_id, task_id, run_number, retry_of),
+                )
+                created_runs.append({"id": run_id, "task_id": task_id, "run_number": run_number})
+                await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "queued"})
+
+            await db.commit()
+            return {"retried": len(created_runs), "runs": created_runs}
+        finally:
+            await db.close()
 
     async def _cascade_trigger_downstream(self, db: aiosqlite.Connection, completed_task_id: str):
         """When a task run succeeds, check downstream tasks and queue runs if all deps are met."""

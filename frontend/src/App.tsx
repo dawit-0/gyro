@@ -84,6 +84,21 @@ export default function App() {
     loadTasks();
   }
 
+  async function handleRetryTask(id: string) {
+    await api.tasks.retry(id);
+    loadTasks();
+  }
+
+  async function handleRetryFlow(id: string) {
+    await api.flows.retry(id);
+    loadTasks();
+  }
+
+  async function handleResumeFlow(id: string) {
+    await api.flows.resume(id);
+    loadTasks();
+  }
+
   function handleSpawnFromAssistant(assistant: Assistant) {
     setTaskPrefill({
       title: "",
@@ -160,6 +175,9 @@ export default function App() {
               onCancel={handleCancel}
               onDelete={handleDelete}
               onTrigger={handleTrigger}
+              onRetryTask={handleRetryTask}
+              onRetryFlow={handleRetryFlow}
+              onResumeFlow={handleResumeFlow}
             />
           )}
         </main>

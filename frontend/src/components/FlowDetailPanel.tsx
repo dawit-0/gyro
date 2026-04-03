@@ -10,6 +10,7 @@ interface Props {
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
   onTrigger: (id: string) => void;
+  onRetryTask: (id: string) => void;
   onNodeSelect: (id: string) => void;
 }
 
@@ -22,6 +23,7 @@ export default function FlowDetailPanel({
   onCancel,
   onDelete,
   onTrigger,
+  onRetryTask,
   onNodeSelect,
 }: Props) {
   const [latestRun, setLatestRun] = useState<TaskRun | null>(null);
@@ -49,6 +51,7 @@ export default function FlowDetailPanel({
   const nodeMap = new Map(allNodes.map((n) => [n.id, n]));
   const displayStatus = node.latest_run_status || "idle";
   const isRunning = displayStatus === "running" || displayStatus === "queued";
+  const isFailed = displayStatus === "failed" || displayStatus === "cancelled";
 
   return (
     <div className="flow-detail-panel">
@@ -77,6 +80,31 @@ export default function FlowDetailPanel({
           {latestRun.num_turns > 0 && (
             <span>{latestRun.num_turns} turns</span>
           )}
+        </div>
+      )}
+
+      {/* Retry info */}
+      {(node.max_retries > 0 || (latestRun && latestRun.attempt_number > 1)) && (
+        <div className="flow-detail-retry-info">
+          {node.max_retries > 0 && (
+            <span className="retry-config-badge" title="Auto-retry configured">
+              &#x21bb; Auto-retry: up to {node.max_retries}x (delay: {node.retry_delay_seconds}s)
+            </span>
+          )}
+          {latestRun && latestRun.attempt_number > 1 && (
+            <span className="retry-attempt-badge">
+              Attempt {latestRun.attempt_number}
+              {latestRun.trigger === "retry" && " (retry)"}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Error message for failed runs */}
+      {isFailed && latestRun?.error_message && (
+        <div className="flow-detail-error">
+          <div className="flow-detail-dep-label">Error</div>
+          <pre className="flow-detail-error-pre">{latestRun.error_message}</pre>
         </div>
       )}
 
@@ -135,6 +163,15 @@ export default function FlowDetailPanel({
         {isRunning && (
           <button className="btn btn-sm btn-danger" onClick={() => onCancel(node.id)}>
             Cancel
+          </button>
+        )}
+        {isFailed && (
+          <button
+            className="btn btn-sm btn-retry"
+            onClick={() => onRetryTask(node.id)}
+            title="Retry this task and continue the flow from here"
+          >
+            &#x21bb; Retry
           </button>
         )}
         {!isRunning && (

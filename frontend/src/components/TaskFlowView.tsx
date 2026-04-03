@@ -73,6 +73,9 @@ function layoutGraph(
         latestRunStatus: n.latest_run_status,
         model: n.model,
         schedule: n.schedule,
+        maxRetries: n.max_retries || 0,
+        attemptNumber: n.attempt_number,
+        latestRunTrigger: n.latest_run_trigger,
       },
     };
   });
@@ -103,9 +106,20 @@ interface Props {
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
   onTrigger: (id: string) => void;
+  onRetryTask: (id: string) => void;
+  onRetryFlow: (id: string) => void;
+  onResumeFlow: (id: string) => void;
 }
 
-export default function TaskFlowView({ selectedFlow, onCancel, onDelete, onTrigger }: Props) {
+export default function TaskFlowView({
+  selectedFlow,
+  onCancel,
+  onDelete,
+  onTrigger,
+  onRetryTask,
+  onRetryFlow,
+  onResumeFlow,
+}: Props) {
   const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[]);
   const [dagData, setDagData] = useState<{ nodes: DagNode[]; edges: DagEdge[] }>({
@@ -203,8 +217,59 @@ export default function TaskFlowView({ selectedFlow, onCancel, onDelete, onTrigg
     [onTrigger, loadDag]
   );
 
+  const handleRetryTask = useCallback(
+    (id: string) => {
+      onRetryTask(id);
+      setTimeout(loadDag, 500);
+    },
+    [onRetryTask, loadDag]
+  );
+
+  const handleRetryFlow = useCallback(() => {
+    if (selectedFlow) {
+      onRetryFlow(selectedFlow);
+      setTimeout(loadDag, 500);
+    }
+  }, [selectedFlow, onRetryFlow, loadDag]);
+
+  const handleResumeFlow = useCallback(() => {
+    if (selectedFlow) {
+      onResumeFlow(selectedFlow);
+      setTimeout(loadDag, 500);
+    }
+  }, [selectedFlow, onResumeFlow, loadDag]);
+
+  const hasFailedTasks = dagData.nodes.some(
+    (n) => n.latest_run_status === "failed" || n.latest_run_status === "cancelled"
+  );
+
+  const hasAnyRuns = dagData.nodes.some((n) => n.latest_run_status != null);
+
   return (
     <div className="agentflow-container">
+      {selectedFlow && hasAnyRuns && (
+        <div className="flow-toolbar">
+          {hasFailedTasks && (
+            <>
+              <button
+                className="btn btn-sm flow-toolbar-btn flow-toolbar-resume"
+                onClick={handleResumeFlow}
+                title="Resume from failed tasks — retries the earliest failed tasks and continues the flow"
+              >
+                &#x25b6; Resume Flow
+              </button>
+              <button
+                className="btn btn-sm flow-toolbar-btn flow-toolbar-retry"
+                onClick={handleRetryFlow}
+                title="Retry entire flow from scratch — re-triggers all root tasks"
+              >
+                &#x21bb; Retry Flow
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -249,6 +314,7 @@ export default function TaskFlowView({ selectedFlow, onCancel, onDelete, onTrigg
           onCancel={handleCancel}
           onDelete={handleDelete}
           onTrigger={handleTrigger}
+          onRetryTask={handleRetryTask}
           onNodeSelect={(id) => setSelectedNodeId(id)}
         />
       )}

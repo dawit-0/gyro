@@ -50,6 +50,10 @@ export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreate
   const [hasSchedule, setHasSchedule] = useState(false);
   const [cronExpression, setCronExpression] = useState(CRON_PRESETS[1].value);
 
+  // Retry config
+  const [maxRetries, setMaxRetries] = useState(0);
+  const [retryDelay, setRetryDelay] = useState(10);
+
   // Whether to trigger immediately
   const [triggerNow, setTriggerNow] = useState(true);
 
@@ -81,7 +85,9 @@ export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreate
           permissions,
           schedule: hasSchedule ? cronExpression : undefined,
           depends_on: dependsOn.length > 0 ? dependsOn : undefined,
-        });
+          max_retries: maxRetries > 0 ? maxRetries : undefined,
+          retry_delay_seconds: maxRetries > 0 ? retryDelay : undefined,
+        } as Parameters<typeof api.tasks.create>[0]);
 
         // Trigger immediately if requested and no schedule
         if (triggerNow && !hasSchedule) {
@@ -165,6 +171,47 @@ export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreate
                 />
                 <p className="field-hint">Schedule: {describeCron(cronExpression)}</p>
               </div>
+            )}
+          </div>
+
+          <div className="form-group">
+            <label>Auto-Retry on Failure (optional)</label>
+            <div className="retry-config">
+              <div className="retry-config-row">
+                <label className="retry-config-label">Max retries</label>
+                <select
+                  value={maxRetries}
+                  onChange={(e) => setMaxRetries(Number(e.target.value))}
+                  className="retry-select"
+                >
+                  <option value={0}>None</option>
+                  <option value={1}>1</option>
+                  <option value={2}>2</option>
+                  <option value={3}>3</option>
+                  <option value={5}>5</option>
+                </select>
+              </div>
+              {maxRetries > 0 && (
+                <div className="retry-config-row">
+                  <label className="retry-config-label">Delay between retries</label>
+                  <select
+                    value={retryDelay}
+                    onChange={(e) => setRetryDelay(Number(e.target.value))}
+                    className="retry-select"
+                  >
+                    <option value={5}>5 seconds</option>
+                    <option value={10}>10 seconds</option>
+                    <option value={30}>30 seconds</option>
+                    <option value={60}>1 minute</option>
+                    <option value={300}>5 minutes</option>
+                  </select>
+                </div>
+              )}
+            </div>
+            {maxRetries > 0 && (
+              <p className="field-hint">
+                If this task fails, it will automatically retry up to {maxRetries} time{maxRetries > 1 ? "s" : ""} with a {retryDelay}s delay.
+              </p>
             )}
           </div>
 
