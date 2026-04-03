@@ -8,26 +8,53 @@ export interface TaskNodeData {
   latestRunStatus: string | null;
   model: string;
   schedule: string | null;
+  maxRetries: number;
+  attemptNumber: number | null;
+  latestRunTrigger: string | null;
   [key: string]: unknown;
 }
 
 function TaskNode({ data }: NodeProps) {
-  const { title, latestRunStatus, model, schedule } = data as unknown as TaskNodeData;
+  const { title, latestRunStatus, model, schedule, maxRetries, attemptNumber, latestRunTrigger } =
+    data as unknown as TaskNodeData;
   const displayStatus = latestRunStatus || "idle";
   const statusClass = displayStatus === "cancelled" ? "cancelled" : displayStatus;
-  const modelShort = (model as string || "").replace("claude-", "").replace("-20250514", "").replace("-latest", "");
+  const modelShort = ((model as string) || "")
+    .replace("claude-", "")
+    .replace("-20250514", "")
+    .replace("-latest", "");
+
+  const isRetry = latestRunTrigger === "retry";
+  const showRetryBadge = isRetry && attemptNumber && attemptNumber > 1;
+  const hasAutoRetry = maxRetries > 0;
 
   return (
     <div className={`flow-node flow-node-${statusClass}`}>
       <Handle type="target" position={Position.Top} className="flow-handle" />
       <div className="flow-node-header">
         <span className="flow-node-title">
-          {schedule && <span className="schedule-badge-sm" title={`Schedule: ${schedule}`}>&#x23f0; </span>}
+          {schedule && (
+            <span className="schedule-badge-sm" title={`Schedule: ${schedule}`}>
+              &#x23f0;{" "}
+            </span>
+          )}
           {title as string}
         </span>
         <span className={`flow-node-status ${statusClass}`}>{displayStatus as string}</span>
       </div>
-      <div className="flow-node-meta">{modelShort}</div>
+      <div className="flow-node-meta">
+        {modelShort}
+        {hasAutoRetry && (
+          <span className="flow-node-retry-badge" title={`Auto-retry: up to ${maxRetries}x`}>
+            &#x21bb; {maxRetries}x
+          </span>
+        )}
+        {showRetryBadge && (
+          <span className="flow-node-attempt-badge" title={`Attempt ${attemptNumber}`}>
+            attempt {attemptNumber}
+          </span>
+        )}
+      </div>
       <Handle type="source" position={Position.Bottom} className="flow-handle" />
     </div>
   );

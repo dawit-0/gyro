@@ -1196,6 +1196,168 @@ input, textarea, select {
   border-top: 1px solid var(--border);
 }
 
+/* ===== Retry & Checkpoint UI ===== */
+
+/* Flow toolbar (top bar with retry/resume buttons) */
+.flow-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.flow-toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.flow-toolbar-resume {
+  background: var(--accent) !important;
+  color: white !important;
+  border: none !important;
+}
+
+.flow-toolbar-resume:hover {
+  background: var(--accent-hover) !important;
+}
+
+.flow-toolbar-retry {
+  background: var(--bg-tertiary) !important;
+  color: var(--warning) !important;
+  border: 1px solid var(--warning) !important;
+}
+
+.flow-toolbar-retry:hover {
+  background: rgba(212, 168, 67, 0.1) !important;
+}
+
+/* Retry button in detail panel */
+.btn-retry {
+  background: transparent;
+  color: var(--warning);
+  border: 1px solid var(--warning);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-retry:hover {
+  background: rgba(212, 168, 67, 0.1);
+}
+
+/* Retry info in detail panel */
+.flow-detail-retry-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.retry-config-badge {
+  font-size: 0.725rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.retry-attempt-badge {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 600;
+  background: rgba(212, 168, 67, 0.15);
+  color: var(--warning);
+  width: fit-content;
+}
+
+/* Error display in detail panel */
+.flow-detail-error {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.flow-detail-error-pre {
+  background: rgba(192, 57, 43, 0.08);
+  border: 1px solid rgba(192, 57, 43, 0.25);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  font-size: 0.725rem;
+  line-height: 1.4;
+  color: var(--danger);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+/* Retry badges on flow nodes */
+.flow-node-retry-badge {
+  margin-left: 8px;
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+.flow-node-attempt-badge {
+  margin-left: 6px;
+  font-size: 0.6rem;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(212, 168, 67, 0.15);
+  color: var(--warning);
+  font-weight: 600;
+}
+
+/* Retry config in task form */
+.retry-config {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.retry-config-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.retry-config-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.retry-select {
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.retry-select:focus {
+  border-color: var(--accent);
+}
+
 /* Depends-on multi-select list */
 .depends-on-list {
   display: flex;

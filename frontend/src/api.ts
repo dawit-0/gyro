@@ -68,7 +68,7 @@ export interface TaskRun {
   id: string;
   task_id: string;
   run_number: number;
-  trigger: "manual" | "schedule" | "dependency";
+  trigger: "manual" | "schedule" | "dependency" | "retry";
   status: "queued" | "running" | "success" | "failed" | "cancelled";
   pid: number | null;
   exit_code: number | null;
@@ -78,6 +78,8 @@ export interface TaskRun {
   started_at: string;
   finished_at: string | null;
   error_message: string | null;
+  attempt_number: number;
+  retry_of_run_id: string | null;
 }
 
 export interface TaskRunOutput {
@@ -95,8 +97,12 @@ export interface DagNode {
   status: string;
   model: string;
   schedule: string | null;
+  max_retries: number;
+  retry_delay_seconds: number;
   latest_run_status: string | null;
   latest_run_number: number | null;
+  attempt_number: number | null;
+  latest_run_trigger: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -159,6 +165,8 @@ export const api = {
       schedule?: string;
       assistant_id?: string;
       depends_on?: string[];
+      max_retries?: number;
+      retry_delay_seconds?: number;
     }) => request<Task>("/tasks", { method: "POST", body: JSON.stringify(data) }),
     update: (
       id: string,
@@ -183,6 +191,11 @@ export const api = {
       request<TaskRun>(`/tasks/${id}/trigger`, { method: "POST" }),
     cancel: (id: string) =>
       request<{ ok: boolean }>(`/tasks/${id}/cancel`, { method: "POST" }),
+    retry: (id: string) =>
+      request<{ id: string; task_id: string; run_number: number }>(
+        `/tasks/${id}/retry`,
+        { method: "POST" }
+      ),
     delete: (id: string) =>
       request<{ ok: boolean }>(`/tasks/${id}`, { method: "DELETE" }),
     runs: (id: string) => request<TaskRun[]>(`/tasks/${id}/runs`),
@@ -232,6 +245,16 @@ export const api = {
     trigger: (id: string) =>
       request<{ triggered: number; runs: Array<{ id: string; task_id: string }> }>(
         `/flows/${id}/trigger`,
+        { method: "POST" }
+      ),
+    retry: (id: string) =>
+      request<{ retried: number; runs: Array<{ id: string; task_id: string }> }>(
+        `/flows/${id}/retry`,
+        { method: "POST" }
+      ),
+    resume: (id: string) =>
+      request<{ retried: number; runs: Array<{ id: string; task_id: string }> }>(
+        `/flows/${id}/resume`,
         { method: "POST" }
       ),
   },

@@ -107,6 +107,72 @@ async def archive_flow(flow_id: str):
         await db.close()
 
 
+@router.post("/{flow_id}/retry")
+async def retry_flow(flow_id: str):
+    """Retry the entire flow from scratch — re-trigger all root tasks."""
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM flows WHERE id = ?", (flow_id,))
+        flow = await cursor.fetchone()
+        if not flow:
+            return {"error": "flow not found"}, 404
+
+        # Cancel any running/queued runs first
+        cursor = await db.execute(
+            """SELECT tr.id, tr.task_id FROM task_runs tr
+               JOIN tasks t ON t.id = tr.task_id
+               WHERE t.flow_id = ? AND tr.status IN ('queued', 'running')""",
+            (flow_id,),
+        )
+        active_runs = await cursor.fetchall()
+        for run_row in active_runs:
+            await db.execute(
+                "UPDATE task_runs SET status = 'cancelled', finished_at = datetime('now') WHERE id = ?",
+                (run_row["id"],),
+            )
+
+        # Find root tasks and trigger them
+        cursor = await db.execute(
+            """SELECT t.id FROM tasks t
+               WHERE t.flow_id = ? AND t.status = 'active'
+               AND NOT EXISTS (
+                   SELECT 1 FROM task_dependencies td WHERE td.task_id = t.id
+               )""",
+            (flow_id,),
+        )
+        root_tasks = await cursor.fetchall()
+        created_runs = []
+
+        for task_row in root_tasks:
+            task_id = task_row["id"]
+            cursor = await db.execute(
+                "SELECT COALESCE(MAX(run_number), 0) + 1 FROM task_runs WHERE task_id = ?",
+                (task_id,),
+            )
+            run_number = (await cursor.fetchone())[0]
+            run_id = str(uuid.uuid4())
+
+            await db.execute(
+                """INSERT INTO task_runs (id, task_id, run_number, trigger, status, attempt_number)
+                   VALUES (?, ?, ?, 'retry', 'queued', 1)""",
+                (run_id, task_id, run_number),
+            )
+            created_runs.append({"id": run_id, "task_id": task_id, "run_number": run_number})
+
+        await db.commit()
+        return {"retried": len(created_runs), "runs": created_runs}
+    finally:
+        await db.close()
+
+
+@router.post("/{flow_id}/resume")
+async def resume_flow(flow_id: str):
+    """Resume a flow from where it failed — retry the earliest failed tasks and let cascading handle the rest."""
+    from main import orchestrator
+    result = await orchestrator.resume_flow(flow_id)
+    return result
+
+
 @router.post("/{flow_id}/trigger")
 async def trigger_flow(flow_id: str):
     """Manually trigger all root tasks (no upstream deps) in this flow."""

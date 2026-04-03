@@ -57,6 +57,8 @@ async def init_db():
                 schedule_enabled INTEGER DEFAULT 1,
                 next_run_at TEXT,
                 last_run_at TEXT,
+                max_retries INTEGER DEFAULT 0,
+                retry_delay_seconds INTEGER DEFAULT 10,
                 created_at TEXT DEFAULT (datetime('now')),
                 updated_at TEXT DEFAULT (datetime('now'))
             );
@@ -73,7 +75,7 @@ async def init_db():
                 id TEXT PRIMARY KEY,
                 task_id TEXT NOT NULL REFERENCES tasks(id),
                 run_number INTEGER NOT NULL,
-                trigger TEXT DEFAULT 'manual' CHECK(trigger IN ('manual','schedule','dependency')),
+                trigger TEXT DEFAULT 'manual' CHECK(trigger IN ('manual','schedule','dependency','retry')),
                 status TEXT DEFAULT 'queued' CHECK(status IN ('queued','running','success','failed','cancelled')),
                 pid INTEGER,
                 exit_code INTEGER,
@@ -83,6 +85,8 @@ async def init_db():
                 started_at TEXT DEFAULT (datetime('now')),
                 finished_at TEXT,
                 error_message TEXT,
+                attempt_number INTEGER DEFAULT 1,
+                retry_of_run_id TEXT REFERENCES task_runs(id),
                 UNIQUE(task_id, run_number)
             );
 
@@ -106,6 +110,22 @@ async def init_db():
                 answered_at TEXT
             );
         """)
+        await db.commit()
+
+        # Migrations for existing databases
+        async def column_exists(table, column):
+            cursor = await db.execute(f"PRAGMA table_info({table})")
+            cols = await cursor.fetchall()
+            return any(c["name"] == column for c in cols)
+
+        if not await column_exists("tasks", "max_retries"):
+            await db.execute("ALTER TABLE tasks ADD COLUMN max_retries INTEGER DEFAULT 0")
+        if not await column_exists("tasks", "retry_delay_seconds"):
+            await db.execute("ALTER TABLE tasks ADD COLUMN retry_delay_seconds INTEGER DEFAULT 10")
+        if not await column_exists("task_runs", "attempt_number"):
+            await db.execute("ALTER TABLE task_runs ADD COLUMN attempt_number INTEGER DEFAULT 1")
+        if not await column_exists("task_runs", "retry_of_run_id"):
+            await db.execute("ALTER TABLE task_runs ADD COLUMN retry_of_run_id TEXT REFERENCES task_runs(id)")
         await db.commit()
     finally:
         await db.close()
