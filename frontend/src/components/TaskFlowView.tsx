@@ -29,17 +29,17 @@ const nodeTypes: NodeTypes = {
 function getStatusColor(status: string | null): string {
   switch (status) {
     case "running":
-      return "#38a063";
+      return "#22c55e";
     case "success":
-      return "#4caf7d";
+      return "#22c55e";
     case "failed":
-      return "#c0392b";
+      return "#ef4444";
     case "cancelled":
-      return "#4a6450";
+      return "#71717a";
     case "queued":
-      return "#5a6b5a";
+      return "#71717a";
     default:
-      return "#5a6b5a";
+      return "#71717a";
   }
 }
 
@@ -92,7 +92,7 @@ function layoutGraph(
       target: e.target,
       animated: isRunning,
       style: {
-        stroke: isFailed ? "#c0392b" : isRunning ? "#38a063" : "#4a6450",
+        stroke: isFailed ? "#ef4444" : isRunning ? "#22c55e" : "#71717a",
         strokeWidth: 2,
       },
     };
@@ -283,7 +283,7 @@ export default function TaskFlowView({
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#253027" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="rgba(255,255,255,0.06)" />
         <Controls
           className="flow-controls"
           showInteractive={false}
@@ -291,7 +291,7 @@ export default function TaskFlowView({
         <MiniMap
           className="flow-minimap"
           nodeColor={(n) => getStatusColor((n.data as { latestRunStatus?: string })?.latestRunStatus || null)}
-          maskColor="rgba(10, 15, 11, 0.8)"
+          maskColor="rgba(9, 9, 11, 0.8)"
         />
       </ReactFlow>
 
