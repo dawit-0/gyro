@@ -70,6 +70,8 @@ async def _init_test_db():
                 schedule_enabled INTEGER DEFAULT 1,
                 next_run_at TEXT,
                 last_run_at TEXT,
+                max_retries INTEGER DEFAULT 0,
+                retry_delay_seconds INTEGER DEFAULT 10,
                 created_at TEXT DEFAULT (datetime('now')),
                 updated_at TEXT DEFAULT (datetime('now'))
             );
@@ -84,7 +86,7 @@ async def _init_test_db():
                 id TEXT PRIMARY KEY,
                 task_id TEXT NOT NULL REFERENCES tasks(id),
                 run_number INTEGER NOT NULL,
-                trigger TEXT DEFAULT 'manual' CHECK(trigger IN ('manual','schedule','dependency')),
+                trigger TEXT DEFAULT 'manual' CHECK(trigger IN ('manual','schedule','dependency','retry')),
                 status TEXT DEFAULT 'queued' CHECK(status IN ('queued','running','success','failed','cancelled')),
                 pid INTEGER,
                 exit_code INTEGER,
@@ -94,6 +96,8 @@ async def _init_test_db():
                 started_at TEXT DEFAULT (datetime('now')),
                 finished_at TEXT,
                 error_message TEXT,
+                attempt_number INTEGER DEFAULT 1,
+                retry_of_run_id TEXT REFERENCES task_runs(id),
                 UNIQUE(task_id, run_number)
             );
             CREATE TABLE IF NOT EXISTS task_run_output (
@@ -171,6 +175,7 @@ async def client():
         patch("routes.task_runs.get_db", _get_test_db),
         patch("routes.flows.get_db", _get_test_db),
         patch("routes.assistants.get_db", _get_test_db),
+        patch("orchestrator.get_db", _get_test_db),
     ):
         from main import app
 
