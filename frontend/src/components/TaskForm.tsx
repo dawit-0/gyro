@@ -31,12 +31,15 @@ function describeCron(expr: string): string {
   return expr;
 }
 
+const NEW_FLOW_VALUE = "__new__";
+
 export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreated, prefill }: Props) {
   const [title, setTitle] = useState(prefill?.title || "");
   const [prompt, setPrompt] = useState(prefill?.prompt || "");
   const [model, setModel] = useState(prefill?.model || MODELS[0].value);
   const [workDir, setWorkDir] = useState(prefill?.workDir || "");
-  const [flowId, setFlowId] = useState(prefill?.flowId || selectedFlow || "");
+  const [flowId, setFlowId] = useState(prefill?.flowId || selectedFlow || (flows.length > 0 ? flows[0].id : NEW_FLOW_VALUE));
+  const [newFlowName, setNewFlowName] = useState("");
   const [permissions, setPermissions] = useState<Permissions>(
     prefill?.permissions?.preset ? prefill.permissions : PERMISSION_PRESETS["standard"]
   );
@@ -58,19 +61,32 @@ export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreate
   const [triggerNow, setTriggerNow] = useState(true);
 
   const isSpawn = !!prefill?.assistantId;
+  const isNewFlow = flowId === NEW_FLOW_VALUE;
+
+  // Filter tasks to only show those in the selected flow
+  const flowTasks = isNewFlow ? [] : tasks.filter((t) => t.flow_id === flowId);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!prompt.trim() || !title.trim()) return;
     setSubmitting(true);
     try {
+      let resolvedFlowId = flowId;
+
+      // Create new flow if needed
+      if (isNewFlow) {
+        const flowName = newFlowName.trim() || title.trim();
+        const newFlow = await api.flows.create({ name: flowName });
+        resolvedFlowId = newFlow.id;
+      }
+
       if (isSpawn && prefill?.assistantId) {
         await api.assistants.spawn(prefill.assistantId, {
           title: title.trim(),
           prompt: prompt.trim(),
           model,
           work_dir: workDir.trim(),
-          flow_id: flowId || undefined,
+          flow_id: resolvedFlowId,
           permissions,
           depends_on: dependsOn.length > 0 ? dependsOn : undefined,
           trigger: triggerNow,
@@ -81,7 +97,7 @@ export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreate
           prompt: prompt.trim(),
           model,
           work_dir: workDir.trim(),
-          flow_id: flowId || undefined,
+          flow_id: resolvedFlowId,
           permissions,
           schedule: hasSchedule ? cronExpression : undefined,
           depends_on: dependsOn.length > 0 ? dependsOn : undefined,
@@ -134,6 +150,30 @@ export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreate
               onChange={(e) => setPrompt(e.target.value)}
               placeholder={isSpawn ? "Describe the specific task..." : "Detailed instructions for the agent..."}
             />
+          </div>
+
+          <div className="form-group">
+            <label>Flow</label>
+            <select value={flowId} onChange={(e) => {
+              setFlowId(e.target.value);
+              setDependsOn([]);
+            }}>
+              {flows.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+              <option value={NEW_FLOW_VALUE}>+ Create new flow</option>
+            </select>
+            {isNewFlow && (
+              <input
+                value={newFlowName}
+                onChange={(e) => setNewFlowName(e.target.value)}
+                placeholder={title.trim() || "Flow name (defaults to task title)"}
+                className="sidebar-inline-input"
+                style={{ marginTop: 8 }}
+              />
+            )}
           </div>
 
           <div className="form-group">
@@ -248,23 +288,11 @@ export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreate
             />
           </div>
 
-          <div className="form-group">
-            <label>Flow (optional)</label>
-            <select value={flowId} onChange={(e) => setFlowId(e.target.value)}>
-              <option value="">None (standalone task)</option>
-              {flows.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {tasks.length > 0 && (
+          {flowTasks.length > 0 && (
             <div className="form-group">
               <label>Depends On (optional)</label>
               <div className="depends-on-list">
-                {tasks.map((t) => (
+                {flowTasks.map((t) => (
                   <label key={t.id} className="permission-toggle">
                     <input
                       type="checkbox"

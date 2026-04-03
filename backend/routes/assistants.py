@@ -150,6 +150,14 @@ async def spawn_task(assistant_id: str, body: SpawnTask):
         work_dir = body.work_dir if body.work_dir is not None else assistant["default_work_dir"]
         flow_id = body.flow_id if body.flow_id is not None else assistant["default_flow_id"]
 
+        # Auto-create a flow if none provided
+        if not flow_id:
+            flow_id = str(uuid.uuid4())
+            await db.execute(
+                "INSERT INTO flows (id, name) VALUES (?, ?)",
+                (flow_id, body.title),
+            )
+
         task_id = str(uuid.uuid4())
         permissions_json = json.dumps(permissions)
 

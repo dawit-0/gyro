@@ -50,7 +50,7 @@ async def init_db():
                 priority INTEGER DEFAULT 0,
                 model TEXT DEFAULT 'claude-sonnet-4-20250514',
                 work_dir TEXT DEFAULT '',
-                flow_id TEXT REFERENCES flows(id),
+                flow_id TEXT NOT NULL REFERENCES flows(id),
                 assistant_id TEXT REFERENCES assistants(id),
                 permissions TEXT DEFAULT '{}',
                 schedule TEXT,
@@ -112,20 +112,5 @@ async def init_db():
         """)
         await db.commit()
 
-        # Migrations for existing databases
-        async def column_exists(table, column):
-            cursor = await db.execute(f"PRAGMA table_info({table})")
-            cols = await cursor.fetchall()
-            return any(c["name"] == column for c in cols)
-
-        if not await column_exists("tasks", "max_retries"):
-            await db.execute("ALTER TABLE tasks ADD COLUMN max_retries INTEGER DEFAULT 0")
-        if not await column_exists("tasks", "retry_delay_seconds"):
-            await db.execute("ALTER TABLE tasks ADD COLUMN retry_delay_seconds INTEGER DEFAULT 10")
-        if not await column_exists("task_runs", "attempt_number"):
-            await db.execute("ALTER TABLE task_runs ADD COLUMN attempt_number INTEGER DEFAULT 1")
-        if not await column_exists("task_runs", "retry_of_run_id"):
-            await db.execute("ALTER TABLE task_runs ADD COLUMN retry_of_run_id TEXT REFERENCES task_runs(id)")
-        await db.commit()
     finally:
         await db.close()

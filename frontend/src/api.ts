@@ -52,7 +52,7 @@ export interface Task {
   priority: number;
   model: string;
   work_dir: string;
-  flow_id: string | null;
+  flow_id: string;
   assistant_id: string | null;
   permissions: Permissions;
   schedule: string | null;
@@ -212,6 +212,17 @@ export const api = {
       request<{ ok: boolean }>(`/tasks/${taskId}/dependencies/${depId}`, {
         method: "DELETE",
       }),
+    quickCreate: (data: {
+      title: string;
+      prompt: string;
+      model?: string;
+      work_dir?: string;
+      permissions?: Permissions;
+      schedule?: string;
+      max_retries?: number;
+      retry_delay_seconds?: number;
+      trigger?: boolean;
+    }) => request<Task>("/tasks/quick", { method: "POST", body: JSON.stringify(data) }),
   },
   taskRuns: {
     list: (taskId?: string) =>

@@ -38,7 +38,7 @@ class TaskCreate(BaseModel):
     model: str = "claude-sonnet-4-20250514"
     priority: int = 0
     work_dir: str = ""
-    flow_id: Optional[str] = None
+    flow_id: str
     permissions: Optional[dict] = None
     schedule: Optional[str] = None
     assistant_id: Optional[str] = None
@@ -115,6 +115,18 @@ class SpawnTask(BaseModel):
     permissions: Optional[dict] = None
     depends_on: Optional[list[str]] = None
     trigger: bool = True  # whether to immediately trigger a run
+
+
+class QuickTaskCreate(BaseModel):
+    title: str
+    prompt: str
+    model: str = "claude-sonnet-4-20250514"
+    work_dir: str = ""
+    permissions: Optional[dict] = None
+    schedule: Optional[str] = None
+    max_retries: int = 0
+    retry_delay_seconds: int = 10
+    trigger: bool = True
 
 
 class AnswerCreate(BaseModel):

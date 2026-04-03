@@ -3,13 +3,14 @@ import { Task } from "../api";
 
 interface Props {
   tasks: Task[];
-  view: "tasks" | "assistants" | "taskflow";
-  onViewChange: (view: "tasks" | "assistants" | "taskflow") => void;
+  view: "flows" | "assistants";
+  onViewChange: (view: "flows" | "assistants") => void;
   onNewTask: () => void;
   onNewAssistant: () => void;
+  onQuickTask: () => void;
 }
 
-export default function Header({ tasks, view, onViewChange, onNewTask, onNewAssistant }: Props) {
+export default function Header({ tasks, view, onViewChange, onNewTask, onNewAssistant, onQuickTask }: Props) {
   return (
     <header className="header">
       <div className="header-left">
@@ -18,22 +19,16 @@ export default function Header({ tasks, view, onViewChange, onNewTask, onNewAssi
         </div>
         <div className="header-tabs">
           <button
-            className={`header-tab${view === "tasks" ? " active" : ""}`}
-            onClick={() => onViewChange("tasks")}
+            className={`header-tab${view === "flows" ? " active" : ""}`}
+            onClick={() => onViewChange("flows")}
           >
-            Tasks
+            Flows
           </button>
           <button
             className={`header-tab${view === "assistants" ? " active" : ""}`}
             onClick={() => onViewChange("assistants")}
           >
             Assistants
-          </button>
-          <button
-            className={`header-tab${view === "taskflow" ? " active" : ""}`}
-            onClick={() => onViewChange("taskflow")}
-          >
-            TaskFlow
           </button>
         </div>
       </div>
@@ -48,10 +43,15 @@ export default function Header({ tasks, view, onViewChange, onNewTask, onNewAssi
         )}
       </div>
       <div className="header-actions">
-        {view === "tasks" || view === "taskflow" ? (
-          <button className="btn btn-primary" onClick={onNewTask}>
-            + New Task
-          </button>
+        {view === "flows" ? (
+          <>
+            <button className="btn btn-secondary" onClick={onQuickTask}>
+              + Quick Task
+            </button>
+            <button className="btn btn-primary" onClick={onNewTask}>
+              + New Task
+            </button>
+          </>
         ) : (
           <button className="btn btn-primary" onClick={onNewAssistant}>
             + New Assistant

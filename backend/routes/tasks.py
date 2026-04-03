@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from database import get_db
-from models import TaskCreate, TaskUpdate, TaskTrigger, DependencyAdd, DEFAULT_PERMISSIONS
+from models import TaskCreate, TaskUpdate, TaskTrigger, DependencyAdd, QuickTaskCreate, DEFAULT_PERMISSIONS
 import cron as cron_parser
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -83,6 +83,54 @@ async def get_dag(flow_id: str = None):
             edges = []
 
         return {"nodes": nodes, "edges": edges}
+    finally:
+        await db.close()
+
+
+@router.post("/quick")
+async def quick_create_task(body: QuickTaskCreate):
+    """Create a single-task flow in one step."""
+    flow_id = str(uuid.uuid4())
+    task_id = str(uuid.uuid4())
+    permissions = body.permissions if body.permissions else DEFAULT_PERMISSIONS
+    permissions_json = json.dumps(permissions)
+    db = await get_db()
+    try:
+        # Create flow named after the task
+        await db.execute(
+            "INSERT INTO flows (id, name) VALUES (?, ?)",
+            (flow_id, body.title),
+        )
+
+        # Compute next_run_at if schedule provided
+        next_run_at = None
+        if body.schedule:
+            now = datetime.now(timezone.utc)
+            next_run = cron_parser.next_run_after(body.schedule, now)
+            next_run_at = next_run.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        await db.execute(
+            """INSERT INTO tasks (id, title, prompt, model, work_dir, flow_id,
+                                  permissions, schedule, next_run_at,
+                                  max_retries, retry_delay_seconds)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (task_id, body.title, body.prompt, body.model,
+             body.work_dir, flow_id, permissions_json,
+             body.schedule, next_run_at, body.max_retries, body.retry_delay_seconds),
+        )
+
+        # Trigger immediately if requested
+        if body.trigger and not body.schedule:
+            run_id = str(uuid.uuid4())
+            await db.execute(
+                """INSERT INTO task_runs (id, task_id, run_number, trigger, status)
+                   VALUES (?, ?, 1, 'manual', 'queued')""",
+                (run_id, task_id),
+            )
+
+        await db.commit()
+        cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        return _parse_task_row(await cursor.fetchone())
     finally:
         await db.close()
 

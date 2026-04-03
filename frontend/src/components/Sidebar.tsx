@@ -7,7 +7,7 @@ interface Props {
   onSelectFlow: (id: string | null) => void;
   onFlowsChange: () => void;
   tasks: Task[];
-  view: "tasks" | "assistants" | "taskflow";
+  view: "flows" | "assistants";
   assistants: Assistant[];
   onNewTask: () => void;
   onNewAssistant: () => void;
@@ -16,6 +16,7 @@ interface Props {
   onTriggerFlow: (id: string) => void;
   onRetryFlow: (id: string) => void;
   onResumeFlow: (id: string) => void;
+  onQuickTask: () => void;
 }
 
 export default function Sidebar({
@@ -33,6 +34,7 @@ export default function Sidebar({
   onTriggerFlow,
   onRetryFlow,
   onResumeFlow,
+  onQuickTask,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [newName, setNewName] = useState("");
@@ -85,8 +87,8 @@ export default function Sidebar({
 
       {!collapsed && (
         <div className="sidebar-inner">
-          {/* ── Tasks Tab ── */}
-          {view === "tasks" && (
+          {/* ── Flows Tab ── */}
+          {view === "flows" && (
             <>
               <div className="sidebar-section">
                 <h3>Flows</h3>
@@ -94,7 +96,7 @@ export default function Sidebar({
                   className={`project-item ${selectedFlow === null ? "active" : ""}`}
                   onClick={() => onSelectFlow(null)}
                 >
-                  <span>All Tasks</span>
+                  <span>All Flows</span>
                   <span className="sidebar-count">{tasks.length}</span>
                 </div>
                 {flows.map((f) => {
@@ -144,8 +146,61 @@ export default function Sidebar({
                 )}
               </div>
 
+              {selectedFlow && selectedFlowData && (
+                <div className="sidebar-section">
+                  <h3>Flow Actions</h3>
+                  <button
+                    className="sidebar-action-btn"
+                    onClick={() => onTriggerFlow(selectedFlow)}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path d="M4 2l10 6-10 6V2z" fill="currentColor" />
+                    </svg>
+                    Trigger Flow
+                  </button>
+                  <button
+                    className="sidebar-action-btn sidebar-action-warning"
+                    onClick={() => onRetryFlow(selectedFlow)}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path
+                        d="M2 8a6 6 0 0111.5-2.5M14 8a6 6 0 01-11.5 2.5"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                      <path d="M14 2v4h-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M2 14v-4h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Retry Failed
+                  </button>
+                  <button
+                    className="sidebar-action-btn sidebar-action-accent"
+                    onClick={() => onResumeFlow(selectedFlow)}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path d="M3 2l5 6-5 6V2z" fill="currentColor" />
+                      <path d="M9 2l5 6-5 6V2z" fill="currentColor" />
+                    </svg>
+                    Resume Flow
+                  </button>
+                  <button className="sidebar-action-btn" onClick={onNewTask}>
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                    Add Task to Flow
+                  </button>
+                </div>
+              )}
+
               <div className="sidebar-section">
                 <h3>Quick Actions</h3>
+                <button className="sidebar-action-btn" onClick={onQuickTask}>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                  Quick Task
+                </button>
                 <button className="sidebar-action-btn" onClick={onNewTask}>
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                     <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -158,8 +213,8 @@ export default function Sidebar({
                 <h3>Overview</h3>
                 <div className="sidebar-stats">
                   <div className="sidebar-stat">
-                    <span className="sidebar-stat-value">{tasks.length}</span>
-                    <span className="sidebar-stat-label">Total</span>
+                    <span className="sidebar-stat-value">{flows.length}</span>
+                    <span className="sidebar-stat-label">Flows</span>
                   </div>
                   <div className="sidebar-stat">
                     <span className="sidebar-stat-value sidebar-stat-running">
@@ -258,110 +313,6 @@ export default function Sidebar({
                   <div className="sidebar-stat">
                     <span className="sidebar-stat-value">{tasks.length}</span>
                     <span className="sidebar-stat-label">Tasks</span>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* ── TaskFlow Tab ── */}
-          {view === "taskflow" && (
-            <>
-              <div className="sidebar-section">
-                <h3>Flows</h3>
-                <div
-                  className={`project-item ${selectedFlow === null ? "active" : ""}`}
-                  onClick={() => onSelectFlow(null)}
-                >
-                  <span>All Flows</span>
-                </div>
-                {flows.map((f) => (
-                  <div
-                    key={f.id}
-                    className={`project-item ${selectedFlow === f.id ? "active" : ""}`}
-                    onClick={() => onSelectFlow(f.id)}
-                  >
-                    <span>{f.name}</span>
-                    {f.schedule && (
-                      <span className="flow-schedule-badge" title={f.schedule}>
-                        &#x23f0;
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {selectedFlow && selectedFlowData && (
-                <div className="sidebar-section">
-                  <h3>Flow Actions</h3>
-                  <button
-                    className="sidebar-action-btn"
-                    onClick={() => onTriggerFlow(selectedFlow)}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                      <path d="M4 2l10 6-10 6V2z" fill="currentColor" />
-                    </svg>
-                    Trigger Flow
-                  </button>
-                  <button
-                    className="sidebar-action-btn sidebar-action-warning"
-                    onClick={() => onRetryFlow(selectedFlow)}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                      <path
-                        d="M2 8a6 6 0 0111.5-2.5M14 8a6 6 0 01-11.5 2.5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                      <path d="M14 2v4h-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M2 14v-4h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    Retry Failed
-                  </button>
-                  <button
-                    className="sidebar-action-btn sidebar-action-accent"
-                    onClick={() => onResumeFlow(selectedFlow)}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                      <path d="M3 2l5 6-5 6V2z" fill="currentColor" />
-                      <path d="M9 2l5 6-5 6V2z" fill="currentColor" />
-                    </svg>
-                    Resume Flow
-                  </button>
-                  <button className="sidebar-action-btn" onClick={onNewTask}>
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                    Add Task to Flow
-                  </button>
-                </div>
-              )}
-
-              <div className="sidebar-section">
-                <h3>Flow Stats</h3>
-                <div className="sidebar-stats">
-                  <div className="sidebar-stat">
-                    <span className="sidebar-stat-value">{flows.length}</span>
-                    <span className="sidebar-stat-label">Flows</span>
-                  </div>
-                  <div className="sidebar-stat">
-                    <span className="sidebar-stat-value sidebar-stat-running">
-                      {runningTasks.length}
-                    </span>
-                    <span className="sidebar-stat-label">Running</span>
-                  </div>
-                  <div className="sidebar-stat">
-                    <span className="sidebar-stat-value sidebar-stat-queued">
-                      {queuedTasks.length}
-                    </span>
-                    <span className="sidebar-stat-label">Queued</span>
-                  </div>
-                  <div className="sidebar-stat">
-                    <span className="sidebar-stat-value sidebar-stat-failed">
-                      {failedTasks.length}
-                    </span>
-                    <span className="sidebar-stat-label">Failed</span>
                   </div>
                 </div>
               </div>

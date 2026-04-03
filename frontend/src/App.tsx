@@ -3,7 +3,6 @@ import { api, Task, Flow, Assistant, Permissions } from "./api";
 import { socket } from "./socket";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
-import TaskGrid from "./components/TaskGrid";
 import TaskForm from "./components/TaskForm";
 import AssistantList from "./components/AssistantList";
 import AssistantForm from "./components/AssistantForm";
@@ -24,11 +23,12 @@ export default function App() {
   const [flows, setFlows] = useState<Flow[]>([]);
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null);
   const [showTaskForm, setShowTaskForm] = useState(false);
-  const [view, setView] = useState<"tasks" | "assistants" | "taskflow">("tasks");
+  const [view, setView] = useState<"flows" | "assistants">("flows");
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [showAssistantForm, setShowAssistantForm] = useState(false);
   const [editingAssistant, setEditingAssistant] = useState<Assistant | null>(null);
   const [taskPrefill, setTaskPrefill] = useState<Partial<TaskPrefill> | null>(null);
+  const [showQuickTask, setShowQuickTask] = useState(false);
 
   const loadTasks = useCallback(async () => {
     const data = await api.tasks.list(selectedFlow || undefined);
@@ -110,7 +110,7 @@ export default function App() {
       assistantId: assistant.id,
     });
     setShowTaskForm(true);
-    setView("tasks");
+    setView("flows");
   }
 
   function handleEditAssistant(assistant: Assistant) {
@@ -121,6 +121,13 @@ export default function App() {
   async function handleDeleteAssistant(id: string) {
     await api.assistants.delete(id);
     loadAssistants();
+  }
+
+  async function handleQuickTask(title: string, prompt: string) {
+    await api.tasks.quickCreate({ title, prompt, trigger: true });
+    loadTasks();
+    loadFlows();
+    setShowQuickTask(false);
   }
 
   return (
@@ -137,6 +144,7 @@ export default function App() {
           setEditingAssistant(null);
           setShowAssistantForm(true);
         }}
+        onQuickTask={() => setShowQuickTask(true)}
       />
       <div className="main-layout">
         <Sidebar
@@ -163,20 +171,10 @@ export default function App() {
           }}
           onRetryFlow={handleRetryFlow}
           onResumeFlow={handleResumeFlow}
+          onQuickTask={() => setShowQuickTask(true)}
         />
         <main className="content">
-          {view === "tasks" ? (
-            <TaskGrid
-              tasks={tasks}
-              onCancel={handleCancel}
-              onDelete={handleDelete}
-              onTrigger={handleTrigger}
-              onNewTask={() => {
-                setTaskPrefill(null);
-                setShowTaskForm(true);
-              }}
-            />
-          ) : view === "assistants" ? (
+          {view === "assistants" ? (
             <AssistantList
               assistants={assistants}
               onSpawn={handleSpawnFromAssistant}
@@ -209,7 +207,10 @@ export default function App() {
             setShowTaskForm(false);
             setTaskPrefill(null);
           }}
-          onCreated={loadTasks}
+          onCreated={() => {
+            loadTasks();
+            loadFlows();
+          }}
           prefill={taskPrefill}
         />
       )}
@@ -224,6 +225,71 @@ export default function App() {
           onSaved={loadAssistants}
         />
       )}
+      {showQuickTask && (
+        <QuickTaskModal
+          onClose={() => setShowQuickTask(false)}
+          onSubmit={handleQuickTask}
+        />
+      )}
+    </div>
+  );
+}
+
+function QuickTaskModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (title: string, prompt: string) => void }) {
+  const [title, setTitle] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim() || !prompt.trim()) return;
+    setSubmitting(true);
+    try {
+      await onSubmit(title.trim(), prompt.trim());
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>Quick Task</h2>
+        <p style={{ color: "var(--text-secondary)", marginBottom: 16, fontSize: 13 }}>
+          Creates a new flow with a single task and runs it immediately.
+        </p>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Title</label>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Brief description"
+              autoFocus
+            />
+          </div>
+          <div className="form-group">
+            <label>Prompt</label>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Instructions for the agent..."
+            />
+          </div>
+          <div className="form-actions">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting || !title.trim() || !prompt.trim()}
+            >
+              {submitting ? "Creating..." : "Create & Run"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
