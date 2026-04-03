@@ -145,6 +145,24 @@ export default function App() {
           onSelectFlow={setSelectedFlow}
           onFlowsChange={loadFlows}
           tasks={tasks}
+          view={view}
+          assistants={assistants}
+          onNewTask={() => {
+            setTaskPrefill(null);
+            setShowTaskForm(true);
+          }}
+          onNewAssistant={() => {
+            setEditingAssistant(null);
+            setShowAssistantForm(true);
+          }}
+          onSpawnAssistant={handleSpawnFromAssistant}
+          onEditAssistant={handleEditAssistant}
+          onTriggerFlow={async (id) => {
+            await api.flows.trigger(id);
+            loadTasks();
+          }}
+          onRetryFlow={handleRetryFlow}
+          onResumeFlow={handleResumeFlow}
         />
         <main className="content">
           {view === "tasks" ? (
