@@ -22,12 +22,20 @@ async def _create_flow(client, name="Flow"):
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
 
-async def test_create_task(client):
+async def test_create_task(client, db):
     data = await _create_task(client, title="My Task", prompt="hello")
     assert data["title"] == "My Task"
     assert data["prompt"] == "hello"
     assert data["status"] == "active"
     assert data["id"]
+
+    # Verify row exists in DB
+    cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (data["id"],))
+    row = await cursor.fetchone()
+    assert row is not None
+    assert row["title"] == "My Task"
+    assert row["prompt"] == "hello"
+    assert row["status"] == "active"
 
 
 async def test_get_task(client):
@@ -72,7 +80,7 @@ async def test_list_tasks_filter_by_flow(client):
     assert resp.json()[0]["title"] == "In flow"
 
 
-async def test_update_task(client):
+async def test_update_task(client, db):
     task = await _create_task(client)
     resp = await client.patch(f"/api/tasks/{task['id']}", json={
         "title": "Updated",
@@ -82,6 +90,12 @@ async def test_update_task(client):
     assert resp.json()["title"] == "Updated"
     assert resp.json()["priority"] == 5
 
+    # Verify update persisted in DB
+    cursor = await db.execute("SELECT title, priority FROM tasks WHERE id = ?", (task["id"],))
+    row = await cursor.fetchone()
+    assert row["title"] == "Updated"
+    assert row["priority"] == 5
+
 
 async def test_update_task_status(client):
     task = await _create_task(client)
@@ -89,7 +103,7 @@ async def test_update_task_status(client):
     assert resp.json()["status"] == "paused"
 
 
-async def test_delete_task(client):
+async def test_delete_task(client, db):
     task = await _create_task(client)
     resp = await client.delete(f"/api/tasks/{task['id']}")
     assert resp.status_code == 200
@@ -98,10 +112,14 @@ async def test_delete_task(client):
     resp = await client.get(f"/api/tasks/{task['id']}")
     assert resp.status_code == 404
 
+    # Verify row is gone from DB
+    cursor = await db.execute("SELECT COUNT(*) FROM tasks WHERE id = ?", (task["id"],))
+    assert (await cursor.fetchone())[0] == 0
+
 
 # ── Trigger & Runs ───────────────────────────────────────────────────────────
 
-async def test_trigger_task(client):
+async def test_trigger_task(client, db):
     task = await _create_task(client)
     resp = await client.post(f"/api/tasks/{task['id']}/trigger")
     assert resp.status_code == 200
@@ -110,6 +128,14 @@ async def test_trigger_task(client):
     assert run["run_number"] == 1
     assert run["status"] == "queued"
     assert run["trigger"] == "manual"
+
+    # Verify task_runs row exists in DB
+    cursor = await db.execute("SELECT * FROM task_runs WHERE id = ?", (run["id"],))
+    row = await cursor.fetchone()
+    assert row is not None
+    assert row["task_id"] == task["id"]
+    assert row["run_number"] == 1
+    assert row["status"] == "queued"
 
 
 async def test_trigger_task_increments_run_number(client):
@@ -151,7 +177,7 @@ async def test_create_task_with_dependency(client):
     assert upstream["id"] in resp.json()["depends_on"]
 
 
-async def test_add_dependency(client):
+async def test_add_dependency(client, db):
     a = await _create_task(client, title="A")
     b = await _create_task(client, title="B")
     resp = await client.post(f"/api/tasks/{b['id']}/dependencies", json={
@@ -161,6 +187,13 @@ async def test_add_dependency(client):
 
     resp = await client.get(f"/api/tasks/{b['id']}/dependencies")
     assert a["id"] in resp.json()["depends_on"]
+
+    # Verify dependency row in DB
+    cursor = await db.execute(
+        "SELECT * FROM task_dependencies WHERE task_id = ? AND depends_on_task_id = ?",
+        (b["id"], a["id"]),
+    )
+    assert await cursor.fetchone() is not None
 
 
 async def test_remove_dependency(client):
@@ -237,7 +270,7 @@ async def test_create_task_with_schedule(client):
 
 # ── Delete cascades ──────────────────────────────────────────────────────────
 
-async def test_delete_task_removes_runs_and_deps(client):
+async def test_delete_task_removes_runs_and_deps(client, db):
     a = await _create_task(client, title="A")
     b = await _create_task(client, title="B", depends_on=[a["id"]])
     await client.post(f"/api/tasks/{a['id']}/trigger")
@@ -245,10 +278,17 @@ async def test_delete_task_removes_runs_and_deps(client):
     resp = await client.delete(f"/api/tasks/{a['id']}")
     assert resp.status_code == 200
 
-    # Runs should be gone
-    resp = await client.get(f"/api/tasks/{a['id']}/runs")
-    assert resp.json() == []
+    # Verify task row gone from DB
+    cursor = await db.execute("SELECT COUNT(*) FROM tasks WHERE id = ?", (a["id"],))
+    assert (await cursor.fetchone())[0] == 0
 
-    # Dependency from B should be gone
-    resp = await client.get(f"/api/tasks/{b['id']}/dependencies")
-    assert resp.json()["depends_on"] == []
+    # Verify task_runs rows gone from DB
+    cursor = await db.execute("SELECT COUNT(*) FROM task_runs WHERE task_id = ?", (a["id"],))
+    assert (await cursor.fetchone())[0] == 0
+
+    # Verify dependency rows gone from DB
+    cursor = await db.execute(
+        "SELECT COUNT(*) FROM task_dependencies WHERE task_id = ? OR depends_on_task_id = ?",
+        (a["id"], a["id"]),
+    )
+    assert (await cursor.fetchone())[0] == 0

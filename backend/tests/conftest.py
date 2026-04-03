@@ -152,6 +152,16 @@ async def _clean_tables():
 
 
 @pytest_asyncio.fixture
+async def db():
+    """Direct DB connection for verifying data in tables."""
+    conn = await _get_test_db()
+    try:
+        yield conn
+    finally:
+        await conn.close()
+
+
+@pytest_asyncio.fixture
 async def client():
     """Async HTTP client that patches get_db to use the in-memory DB."""
     # Patch get_db in every module that imports it

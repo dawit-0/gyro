@@ -22,11 +22,18 @@ async def _create_flow(client, name="Flow"):
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
 
-async def test_create_assistant(client):
+async def test_create_assistant(client, db):
     data = await _create_assistant(client, name="Code Helper", description="Helps with code")
     assert data["name"] == "Code Helper"
     assert data["description"] == "Helps with code"
     assert data["id"]
+
+    # Verify row exists in DB
+    cursor = await db.execute("SELECT * FROM assistants WHERE id = ?", (data["id"],))
+    row = await cursor.fetchone()
+    assert row is not None
+    assert row["name"] == "Code Helper"
+    assert row["description"] == "Helps with code"
 
 
 async def test_create_assistant_with_context(client):
@@ -57,16 +64,20 @@ async def test_update_assistant(client):
     assert resp.json()["name"] == "New"
 
 
-async def test_delete_assistant(client):
+async def test_delete_assistant(client, db):
     asst = await _create_assistant(client)
     resp = await client.delete(f"/api/assistants/{asst['id']}")
     assert resp.status_code == 200
     assert resp.json()["ok"] is True
 
+    # Verify row is gone from DB
+    cursor = await db.execute("SELECT COUNT(*) FROM assistants WHERE id = ?", (asst["id"],))
+    assert (await cursor.fetchone())[0] == 0
+
 
 # ── Spawn ────────────────────────────────────────────────────────────────────
 
-async def test_spawn_task_from_assistant(client):
+async def test_spawn_task_from_assistant(client, db):
     asst = await _create_assistant(
         client,
         name="Builder",
@@ -87,6 +98,20 @@ async def test_spawn_task_from_assistant(client):
     # Should auto-trigger a run
     assert "triggered_run" in task
     assert task["triggered_run"]["run_number"] == 1
+
+    # Verify task row in DB with assistant_id link
+    cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task["id"],))
+    row = await cursor.fetchone()
+    assert row is not None
+    assert row["assistant_id"] == asst["id"]
+    assert row["title"] == "Spawned Task"
+
+    # Verify the triggered run row in DB
+    cursor = await db.execute("SELECT * FROM task_runs WHERE task_id = ?", (task["id"],))
+    run_row = await cursor.fetchone()
+    assert run_row is not None
+    assert run_row["run_number"] == 1
+    assert run_row["status"] == "queued"
 
 
 async def test_spawn_task_without_trigger(client):
