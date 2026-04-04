@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { api, Task, Flow, Assistant, Permissions } from "./api";
+import { api, Task, Flow, Agent, Permissions } from "./api";
 import { socket } from "./socket";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import TaskForm from "./components/TaskForm";
-import AssistantList from "./components/AssistantList";
-import AssistantForm from "./components/AssistantForm";
+import AgentList from "./components/AgentList";
+import AgentForm from "./components/AgentForm";
 import TaskFlowView from "./components/TaskFlowView";
 import FlowDashboard from "./components/FlowDashboard";
 
@@ -16,7 +16,7 @@ export interface TaskPrefill {
   workDir: string;
   flowId: string;
   permissions: Permissions;
-  assistantId: string;
+  agentId: string;
 }
 
 export default function App() {
@@ -24,10 +24,10 @@ export default function App() {
   const [flows, setFlows] = useState<Flow[]>([]);
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null);
   const [showTaskForm, setShowTaskForm] = useState(false);
-  const [view, setView] = useState<"flows" | "assistants">("flows");
-  const [assistants, setAssistants] = useState<Assistant[]>([]);
-  const [showAssistantForm, setShowAssistantForm] = useState(false);
-  const [editingAssistant, setEditingAssistant] = useState<Assistant | null>(null);
+  const [view, setView] = useState<"flows" | "agents">("flows");
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [showAgentForm, setShowAgentForm] = useState(false);
+  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [taskPrefill, setTaskPrefill] = useState<Partial<TaskPrefill> | null>(null);
   const [showNewFlowForm, setShowNewFlowForm] = useState(false);
 
@@ -41,16 +41,16 @@ export default function App() {
     setFlows(data);
   }, []);
 
-  const loadAssistants = useCallback(async () => {
-    const data = await api.assistants.list();
-    setAssistants(data);
+  const loadAgents = useCallback(async () => {
+    const data = await api.agents.list();
+    setAgents(data);
   }, []);
 
   useEffect(() => {
     loadTasks();
     loadFlows();
-    loadAssistants();
-  }, [loadTasks, loadFlows, loadAssistants]);
+    loadAgents();
+  }, [loadTasks, loadFlows, loadAgents]);
 
   // Real-time updates
   useEffect(() => {
@@ -100,28 +100,28 @@ export default function App() {
     loadTasks();
   }
 
-  function handleSpawnFromAssistant(assistant: Assistant) {
+  function handleSpawnFromAgent(agent: Agent) {
     setTaskPrefill({
       title: "",
       prompt: "",
-      model: assistant.default_model,
-      workDir: assistant.default_work_dir,
-      flowId: assistant.default_flow_id || "",
-      permissions: assistant.default_permissions,
-      assistantId: assistant.id,
+      model: agent.default_model,
+      workDir: agent.default_work_dir,
+      flowId: agent.default_flow_id || "",
+      permissions: agent.default_permissions,
+      agentId: agent.id,
     });
     setShowTaskForm(true);
     setView("flows");
   }
 
-  function handleEditAssistant(assistant: Assistant) {
-    setEditingAssistant(assistant);
-    setShowAssistantForm(true);
+  function handleEditAgent(agent: Agent) {
+    setEditingAgent(agent);
+    setShowAgentForm(true);
   }
 
-  async function handleDeleteAssistant(id: string) {
-    await api.assistants.delete(id);
-    loadAssistants();
+  async function handleDeleteAgent(id: string) {
+    await api.agents.delete(id);
+    loadAgents();
   }
 
   function handleQuickTask() {
@@ -144,9 +144,9 @@ export default function App() {
           setSelectedFlow(null);
           setShowNewFlowForm(true);
         }}
-        onNewAssistant={() => {
-          setEditingAssistant(null);
-          setShowAssistantForm(true);
+        onNewAgent={() => {
+          setEditingAgent(null);
+          setShowAgentForm(true);
         }}
         onQuickTask={handleQuickTask}
       />
@@ -158,17 +158,17 @@ export default function App() {
           onFlowsChange={loadFlows}
           tasks={tasks}
           view={view}
-          assistants={assistants}
+          agents={agents}
           onNewTask={() => {
             setTaskPrefill(null);
             setShowTaskForm(true);
           }}
-          onNewAssistant={() => {
-            setEditingAssistant(null);
-            setShowAssistantForm(true);
+          onNewAgent={() => {
+            setEditingAgent(null);
+            setShowAgentForm(true);
           }}
-          onSpawnAssistant={handleSpawnFromAssistant}
-          onEditAssistant={handleEditAssistant}
+          onSpawnAgent={handleSpawnFromAgent}
+          onEditAgent={handleEditAgent}
           onTriggerFlow={async (id) => {
             await api.flows.trigger(id);
             loadTasks();
@@ -179,15 +179,15 @@ export default function App() {
           onShowNewFlowForm={setShowNewFlowForm}
         />
         <main className="content">
-          {view === "assistants" ? (
-            <AssistantList
-              assistants={assistants}
-              onSpawn={handleSpawnFromAssistant}
-              onEdit={handleEditAssistant}
-              onDelete={handleDeleteAssistant}
-              onNewAssistant={() => {
-                setEditingAssistant(null);
-                setShowAssistantForm(true);
+          {view === "agents" ? (
+            <AgentList
+              agents={agents}
+              onSpawn={handleSpawnFromAgent}
+              onEdit={handleEditAgent}
+              onDelete={handleDeleteAgent}
+              onNewAgent={() => {
+                setEditingAgent(null);
+                setShowAgentForm(true);
               }}
             />
           ) : selectedFlow ? (
@@ -226,15 +226,15 @@ export default function App() {
           prefill={taskPrefill}
         />
       )}
-      {showAssistantForm && (
-        <AssistantForm
+      {showAgentForm && (
+        <AgentForm
           flows={flows}
-          assistant={editingAssistant}
+          agent={editingAgent}
           onClose={() => {
-            setShowAssistantForm(false);
-            setEditingAssistant(null);
+            setShowAgentForm(false);
+            setEditingAgent(null);
           }}
-          onSaved={loadAssistants}
+          onSaved={loadAgents}
         />
       )}
     </div>

@@ -60,7 +60,7 @@ export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreate
   // Whether to trigger immediately
   const [triggerNow, setTriggerNow] = useState(true);
 
-  const isSpawn = !!prefill?.assistantId;
+  const isSpawn = !!prefill?.agentId;
   const isNewFlow = flowId === NEW_FLOW_VALUE;
 
   // Filter tasks to only show those in the selected flow
@@ -80,8 +80,8 @@ export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreate
         resolvedFlowId = newFlow.id;
       }
 
-      if (isSpawn && prefill?.assistantId) {
-        await api.assistants.spawn(prefill.assistantId, {
+      if (isSpawn && prefill?.agentId) {
+        await api.agents.spawn(prefill.agentId, {
           title: title.trim(),
           prompt: prompt.trim(),
           model,
@@ -131,7 +131,7 @@ export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreate
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>{isSpawn ? "Spawn Task from Assistant" : "New Task"}</h2>
+        <h2>{isSpawn ? "Spawn Task from Agent" : "New Task"}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Title</label>
