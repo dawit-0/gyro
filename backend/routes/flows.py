@@ -98,6 +98,59 @@ async def update_flow(flow_id: str, body: FlowUpdate):
 async def archive_flow(flow_id: str):
     db = await get_db()
     try:
+        # Cancel any active/queued task runs belonging to this flow
+        await db.execute(
+            """UPDATE task_runs SET status = 'cancelled', finished_at = datetime('now')
+               WHERE task_id IN (SELECT id FROM tasks WHERE flow_id = ?)
+               AND status IN ('queued', 'running')""",
+            (flow_id,),
+        )
+
+        # Delete questions referencing task runs in this flow
+        await db.execute(
+            """DELETE FROM questions
+               WHERE task_id IN (SELECT id FROM tasks WHERE flow_id = ?)""",
+            (flow_id,),
+        )
+
+        # Delete task run output for runs in this flow
+        await db.execute(
+            """DELETE FROM task_run_output
+               WHERE task_run_id IN (
+                   SELECT tr.id FROM task_runs tr
+                   JOIN tasks t ON t.id = tr.task_id
+                   WHERE t.flow_id = ?
+               )""",
+            (flow_id,),
+        )
+
+        # Delete task runs for tasks in this flow
+        await db.execute(
+            """DELETE FROM task_runs
+               WHERE task_id IN (SELECT id FROM tasks WHERE flow_id = ?)""",
+            (flow_id,),
+        )
+
+        # Delete task dependencies for tasks in this flow
+        await db.execute(
+            """DELETE FROM task_dependencies
+               WHERE task_id IN (SELECT id FROM tasks WHERE flow_id = ?)
+               OR depends_on_task_id IN (SELECT id FROM tasks WHERE flow_id = ?)""",
+            (flow_id, flow_id),
+        )
+
+        # Delete tasks belonging to this flow
+        await db.execute(
+            "DELETE FROM tasks WHERE flow_id = ?", (flow_id,)
+        )
+
+        # Clear agent default_flow_id references
+        await db.execute(
+            "UPDATE agents SET default_flow_id = NULL WHERE default_flow_id = ?",
+            (flow_id,),
+        )
+
+        # Archive the flow itself
         await db.execute(
             "UPDATE flows SET archived = 1 WHERE id = ?", (flow_id,)
         )

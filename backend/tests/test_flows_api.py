@@ -76,6 +76,123 @@ async def test_archive_flow(client, db):
     assert row["archived"] == 1
 
 
+async def test_archive_flow_cancels_active_runs(client, db):
+    """Archiving a flow should cancel any queued/running task runs."""
+    flow = await _create_flow(client)
+    # Create a task and trigger the flow to produce a queued run
+    await client.post("/api/tasks", json={
+        "title": "Task A",
+        "prompt": "do something",
+        "flow_id": flow["id"],
+    })
+    await client.post(f"/api/flows/{flow['id']}/trigger")
+
+    # Verify there is a queued run
+    cursor = await db.execute(
+        """SELECT COUNT(*) FROM task_runs tr JOIN tasks t ON tr.task_id = t.id
+           WHERE t.flow_id = ? AND tr.status = 'queued'""",
+        (flow["id"],),
+    )
+    assert (await cursor.fetchone())[0] == 1
+
+    # Remember the task run IDs before archiving
+    cursor = await db.execute("SELECT id FROM task_runs")
+    run_ids_before = [row["id"] for row in await cursor.fetchall()]
+    assert len(run_ids_before) == 1
+
+    # Archive the flow — runs get cancelled then deleted along with tasks
+    resp = await client.delete(f"/api/flows/{flow['id']}")
+    assert resp.status_code == 200
+
+    # Task runs should be fully cleaned up
+    cursor = await db.execute("SELECT COUNT(*) FROM task_runs")
+    assert (await cursor.fetchone())[0] == 0
+
+    # Tasks should also be deleted
+    cursor = await db.execute("SELECT COUNT(*) FROM tasks")
+    assert (await cursor.fetchone())[0] == 0
+
+
+async def test_archive_flow_deletes_tasks(client, db):
+    """Archiving a flow should delete its tasks."""
+    flow = await _create_flow(client)
+    await client.post("/api/tasks", json={
+        "title": "Task A",
+        "prompt": "do something",
+        "flow_id": flow["id"],
+    })
+    await client.post("/api/tasks", json={
+        "title": "Task B",
+        "prompt": "do something else",
+        "flow_id": flow["id"],
+    })
+
+    # Verify tasks exist
+    cursor = await db.execute(
+        "SELECT COUNT(*) FROM tasks WHERE flow_id = ?", (flow["id"],),
+    )
+    assert (await cursor.fetchone())[0] == 2
+
+    # Archive the flow
+    await client.delete(f"/api/flows/{flow['id']}")
+
+    # Tasks should be deleted
+    cursor = await db.execute(
+        "SELECT COUNT(*) FROM tasks WHERE flow_id = ?", (flow["id"],),
+    )
+    assert (await cursor.fetchone())[0] == 0
+
+
+async def test_archive_flow_clears_agent_default_flow(client, db):
+    """Archiving a flow should clear agent default_flow_id references."""
+    flow = await _create_flow(client)
+    # Create an agent pointing at this flow
+    resp = await client.post("/api/agents", json={
+        "name": "Test Agent",
+        "default_flow_id": flow["id"],
+    })
+    agent = resp.json()
+
+    # Archive the flow
+    await client.delete(f"/api/flows/{flow['id']}")
+
+    # Agent's default_flow_id should be cleared
+    cursor = await db.execute(
+        "SELECT default_flow_id FROM agents WHERE id = ?", (agent["id"],),
+    )
+    row = await cursor.fetchone()
+    assert row["default_flow_id"] is None
+
+
+async def test_archive_flow_removes_task_dependencies(client, db):
+    """Archiving a flow should clean up task_dependencies rows."""
+    flow = await _create_flow(client)
+    resp_a = await client.post("/api/tasks", json={
+        "title": "Task A",
+        "prompt": "do A",
+        "flow_id": flow["id"],
+    })
+    task_a = resp_a.json()
+    resp_b = await client.post("/api/tasks", json={
+        "title": "Task B",
+        "prompt": "do B",
+        "flow_id": flow["id"],
+        "depends_on": [task_a["id"]],
+    })
+    task_b = resp_b.json()
+
+    # Verify dependency exists
+    cursor = await db.execute("SELECT COUNT(*) FROM task_dependencies")
+    assert (await cursor.fetchone())[0] == 1
+
+    # Archive the flow
+    await client.delete(f"/api/flows/{flow['id']}")
+
+    # Dependencies should be cleaned up
+    cursor = await db.execute("SELECT COUNT(*) FROM task_dependencies")
+    assert (await cursor.fetchone())[0] == 0
+
+
 async def test_create_flow_with_schedule(client):
     data = await _create_flow(client, name="Scheduled", schedule="0 9 * * *")
     assert data["schedule"] == "0 9 * * *"
