@@ -41,7 +41,7 @@ class TaskCreate(BaseModel):
     flow_id: str
     permissions: Optional[dict] = None
     schedule: Optional[str] = None
-    assistant_id: Optional[str] = None
+    agent_id: Optional[str] = None
     depends_on: Optional[list[str]] = None
     max_retries: int = 0
     retry_delay_seconds: int = 10
@@ -83,7 +83,7 @@ class FlowUpdate(BaseModel):
     schedule_enabled: Optional[bool] = None
 
 
-class AssistantCreate(BaseModel):
+class AgentCreate(BaseModel):
     name: str
     description: str = ""
     instructions: str = ""
@@ -94,7 +94,7 @@ class AssistantCreate(BaseModel):
     default_flow_id: Optional[str] = None
 
 
-class AssistantUpdate(BaseModel):
+class AgentUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     instructions: Optional[str] = None

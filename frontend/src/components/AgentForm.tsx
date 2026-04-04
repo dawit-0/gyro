@@ -1,9 +1,9 @@
 import React, { useState } from "react";
-import { api, Flow, Assistant, ContextItem, Permissions, PERMISSION_PRESETS } from "../api";
+import { api, Flow, Agent, ContextItem, Permissions, PERMISSION_PRESETS } from "../api";
 
 interface Props {
   flows: Flow[];
-  assistant: Assistant | null;
+  agent: Agent | null;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -14,20 +14,20 @@ const MODELS = [
   { value: "claude-haiku-3-5-20241022", label: "Claude Haiku" },
 ];
 
-export default function AssistantForm({ flows, assistant, onClose, onSaved }: Props) {
-  const [name, setName] = useState(assistant?.name || "");
-  const [description, setDescription] = useState(assistant?.description || "");
-  const [instructions, setInstructions] = useState(assistant?.instructions || "");
-  const [context, setContext] = useState<ContextItem[]>(assistant?.context || []);
-  const [defaultModel, setDefaultModel] = useState(assistant?.default_model || MODELS[0].value);
+export default function AgentForm({ flows, agent, onClose, onSaved }: Props) {
+  const [name, setName] = useState(agent?.name || "");
+  const [description, setDescription] = useState(agent?.description || "");
+  const [instructions, setInstructions] = useState(agent?.instructions || "");
+  const [context, setContext] = useState<ContextItem[]>(agent?.context || []);
+  const [defaultModel, setDefaultModel] = useState(agent?.default_model || MODELS[0].value);
   const [permissions, setPermissions] = useState<Permissions>(
-    assistant?.default_permissions?.preset
-      ? assistant.default_permissions
+    agent?.default_permissions?.preset
+      ? agent.default_permissions
       : PERMISSION_PRESETS["standard"]
   );
   const [showPermDetails, setShowPermDetails] = useState(false);
-  const [defaultWorkDir, setDefaultWorkDir] = useState(assistant?.default_work_dir || "");
-  const [defaultFlowId, setDefaultFlowId] = useState(assistant?.default_flow_id || "");
+  const [defaultWorkDir, setDefaultWorkDir] = useState(agent?.default_work_dir || "");
+  const [defaultFlowId, setDefaultFlowId] = useState(agent?.default_flow_id || "");
   const [submitting, setSubmitting] = useState(false);
 
   function addContextItem(type: "file" | "url" | "text") {
@@ -61,10 +61,10 @@ export default function AssistantForm({ flows, assistant, onClose, onSaved }: Pr
         default_work_dir: defaultWorkDir.trim(),
         default_flow_id: defaultFlowId || undefined,
       };
-      if (assistant) {
-        await api.assistants.update(assistant.id, data);
+      if (agent) {
+        await api.agents.update(agent.id, data);
       } else {
-        await api.assistants.create(data);
+        await api.agents.create(data);
       }
       onSaved();
       onClose();
@@ -78,7 +78,7 @@ export default function AssistantForm({ flows, assistant, onClose, onSaved }: Pr
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
-        <h2>{assistant ? "Edit Assistant" : "New Assistant"}</h2>
+        <h2>{agent ? "Edit Agent" : "New Agent"}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Name</label>
@@ -95,7 +95,7 @@ export default function AssistantForm({ flows, assistant, onClose, onSaved }: Pr
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Brief description of what this assistant does"
+              placeholder="Brief description of what this agent does"
             />
           </div>
 
@@ -255,7 +255,7 @@ export default function AssistantForm({ flows, assistant, onClose, onSaved }: Pr
               className="btn btn-primary"
               disabled={submitting || !name.trim()}
             >
-              {submitting ? "Saving..." : assistant ? "Save Changes" : "Create Assistant"}
+              {submitting ? "Saving..." : agent ? "Save Changes" : "Create Agent"}
             </button>
           </div>
         </form>

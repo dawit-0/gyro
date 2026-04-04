@@ -211,11 +211,11 @@ async def create_task(body: TaskCreate):
 
         await db.execute(
             """INSERT INTO tasks (id, title, prompt, model, priority, work_dir, flow_id,
-                                  assistant_id, permissions, schedule, next_run_at,
+                                  agent_id, permissions, schedule, next_run_at,
                                   max_retries, retry_delay_seconds)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (task_id, body.title, body.prompt, body.model, body.priority,
-             body.work_dir, body.flow_id, body.assistant_id, permissions_json,
+             body.work_dir, body.flow_id, body.agent_id, permissions_json,
              body.schedule, next_run_at, body.max_retries, body.retry_delay_seconds),
         )
 

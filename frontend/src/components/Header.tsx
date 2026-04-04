@@ -3,14 +3,14 @@ import { Task } from "../api";
 
 interface Props {
   tasks: Task[];
-  view: "flows" | "assistants";
-  onViewChange: (view: "flows" | "assistants") => void;
+  view: "flows" | "agents";
+  onViewChange: (view: "flows" | "agents") => void;
   onNewFlow: () => void;
-  onNewAssistant: () => void;
+  onNewAgent: () => void;
   onQuickTask: () => void;
 }
 
-export default function Header({ tasks, view, onViewChange, onNewFlow, onNewAssistant, onQuickTask }: Props) {
+export default function Header({ tasks, view, onViewChange, onNewFlow, onNewAgent, onQuickTask }: Props) {
   return (
     <header className="header">
       <div className="header-left">
@@ -25,10 +25,10 @@ export default function Header({ tasks, view, onViewChange, onNewFlow, onNewAssi
             Flows
           </button>
           <button
-            className={`header-tab${view === "assistants" ? " active" : ""}`}
-            onClick={() => onViewChange("assistants")}
+            className={`header-tab${view === "agents" ? " active" : ""}`}
+            onClick={() => onViewChange("agents")}
           >
-            Assistants
+            Agent Registry
           </button>
         </div>
       </div>
@@ -53,8 +53,8 @@ export default function Header({ tasks, view, onViewChange, onNewFlow, onNewAssi
             </button>
           </>
         ) : (
-          <button className="btn btn-primary" onClick={onNewAssistant}>
-            + New Assistant
+          <button className="btn btn-primary" onClick={onNewAgent}>
+            + New Agent
           </button>
         )}
       </div>

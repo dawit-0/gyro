@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Flow, Task, Assistant, api } from "../api";
+import { Flow, Task, Agent, api } from "../api";
 
 interface Props {
   flows: Flow[];
@@ -7,12 +7,12 @@ interface Props {
   onSelectFlow: (id: string | null) => void;
   onFlowsChange: () => void;
   tasks: Task[];
-  view: "flows" | "assistants";
-  assistants: Assistant[];
+  view: "flows" | "agents";
+  agents: Agent[];
   onNewTask: () => void;
-  onNewAssistant: () => void;
-  onSpawnAssistant: (assistant: Assistant) => void;
-  onEditAssistant: (assistant: Assistant) => void;
+  onNewAgent: () => void;
+  onSpawnAgent: (agent: Agent) => void;
+  onEditAgent: (agent: Agent) => void;
   onTriggerFlow: (id: string) => void;
   onRetryFlow: (id: string) => void;
   onResumeFlow: (id: string) => void;
@@ -27,11 +27,11 @@ export default function Sidebar({
   onFlowsChange,
   tasks,
   view,
-  assistants,
+  agents,
   onNewTask,
-  onNewAssistant,
-  onSpawnAssistant,
-  onEditAssistant,
+  onNewAgent,
+  onSpawnAgent,
+  onEditAgent,
   onTriggerFlow,
   onRetryFlow,
   onResumeFlow,
@@ -373,44 +373,44 @@ export default function Sidebar({
             </>
           )}
 
-          {/* ── Assistants Tab ── */}
-          {view === "assistants" && (
+          {/* ── Agents Tab ── */}
+          {view === "agents" && (
             <>
               <div className="sidebar-section">
                 <h3>Quick Actions</h3>
-                <button className="sidebar-action-btn" onClick={onNewAssistant}>
+                <button className="sidebar-action-btn" onClick={onNewAgent}>
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                     <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
-                  New Assistant
+                  New Agent
                 </button>
               </div>
 
               <div className="sidebar-section">
-                <h3>Assistants ({assistants.length})</h3>
-                {assistants.length === 0 ? (
+                <h3>Agents ({agents.length})</h3>
+                {agents.length === 0 ? (
                   <div className="sidebar-empty-hint">
-                    No assistants yet. Create one to get started.
+                    No agents yet. Create one to get started.
                   </div>
                 ) : (
-                  assistants.map((a) => (
-                    <div key={a.id} className="sidebar-assistant-item">
-                      <div className="sidebar-assistant-name">{a.name}</div>
+                  agents.map((a) => (
+                    <div key={a.id} className="sidebar-agent-item">
+                      <div className="sidebar-agent-name">{a.name}</div>
                       {a.description && (
-                        <div className="sidebar-assistant-desc">
+                        <div className="sidebar-agent-desc">
                           {a.description}
                         </div>
                       )}
-                      <div className="sidebar-assistant-actions">
+                      <div className="sidebar-agent-actions">
                         <button
                           className="btn btn-sm btn-primary"
-                          onClick={() => onSpawnAssistant(a)}
+                          onClick={() => onSpawnAgent(a)}
                         >
                           Spawn
                         </button>
                         <button
                           className="btn btn-sm btn-secondary"
-                          onClick={() => onEditAssistant(a)}
+                          onClick={() => onEditAgent(a)}
                         >
                           Edit
                         </button>
@@ -424,8 +424,8 @@ export default function Sidebar({
                 <h3>Overview</h3>
                 <div className="sidebar-stats">
                   <div className="sidebar-stat">
-                    <span className="sidebar-stat-value">{assistants.length}</span>
-                    <span className="sidebar-stat-label">Assistants</span>
+                    <span className="sidebar-stat-value">{agents.length}</span>
+                    <span className="sidebar-stat-label">Agents</span>
                   </div>
                   <div className="sidebar-stat">
                     <span className="sidebar-stat-value">{tasks.length}</span>
