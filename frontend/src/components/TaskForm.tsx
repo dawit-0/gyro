@@ -48,6 +48,8 @@ export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreate
 
   // Dependency state (multi-select)
   const [dependsOn, setDependsOn] = useState<string[]>([]);
+  const [passOutput, setPassOutput] = useState(true);
+  const [maxOutputChars, setMaxOutputChars] = useState(4000);
 
   // Schedule state
   const [hasSchedule, setHasSchedule] = useState(false);
@@ -101,6 +103,8 @@ export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreate
           permissions,
           schedule: hasSchedule ? cronExpression : undefined,
           depends_on: dependsOn.length > 0 ? dependsOn : undefined,
+          pass_output: dependsOn.length > 0 ? passOutput : undefined,
+          max_output_chars: dependsOn.length > 0 && passOutput ? maxOutputChars : undefined,
           max_retries: maxRetries > 0 ? maxRetries : undefined,
           retry_delay_seconds: maxRetries > 0 ? retryDelay : undefined,
         } as Parameters<typeof api.tasks.create>[0]);
@@ -310,7 +314,35 @@ export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreate
                 ))}
               </div>
               {dependsOn.length > 0 && (
-                <p className="field-hint">This task will wait for all selected tasks to succeed before running.</p>
+                <>
+                  <p className="field-hint">This task will wait for all selected tasks to succeed before running.</p>
+                  <div className="data-passing-config">
+                    <label className="permission-toggle">
+                      <input
+                        type="checkbox"
+                        checked={passOutput}
+                        onChange={(e) => setPassOutput(e.target.checked)}
+                      />
+                      <span>Pass upstream output as context</span>
+                    </label>
+                    {passOutput && (
+                      <div className="retry-config-row" style={{ marginTop: 6 }}>
+                        <label className="retry-config-label">Max context chars per task</label>
+                        <select
+                          value={maxOutputChars}
+                          onChange={(e) => setMaxOutputChars(Number(e.target.value))}
+                          className="retry-select"
+                        >
+                          <option value={1000}>1,000</option>
+                          <option value={2000}>2,000</option>
+                          <option value={4000}>4,000</option>
+                          <option value={8000}>8,000</option>
+                          <option value={16000}>16,000</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           )}

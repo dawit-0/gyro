@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from database import get_db
 from db import task_runs as db_task_runs, task_run_output as db_output
+from db import task_xcom as db_xcom
 
 router = APIRouter(prefix="/api/task-runs", tags=["task-runs"])
 
@@ -32,5 +33,16 @@ async def get_task_run_output(run_id: str):
     db = await get_db()
     try:
         return await db_output.list_by_run(db, run_id)
+    finally:
+        await db.close()
+
+
+@router.get("/{run_id}/xcom")
+async def get_run_xcom(run_id: str):
+    """Get xcom values for a specific task run."""
+    db = await get_db()
+    try:
+        entries = await db_xcom.get_all_for_run(db, run_id)
+        return {"run_id": run_id, "xcom": entries}
     finally:
         await db.close()

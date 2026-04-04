@@ -12,6 +12,7 @@ import cron as cron_parser
 from database import get_db
 from db import tasks as db_tasks, task_runs as db_task_runs, flows as db_flows
 from db import task_run_output as db_output, task_dependencies as db_deps
+from db import task_xcom as db_xcom
 from logging_config import get_logger, task_logger
 from models import DEFAULT_PERMISSIONS
 
@@ -173,11 +174,51 @@ class Orchestrator:
             "content": content,
         })
 
+    async def _build_prompt_with_context(self, db, task_id: str, base_prompt: str) -> str:
+        """Prepend upstream task outputs to the prompt for inter-task data passing."""
+        upstream_deps = await db_deps.get_upstream_with_config(db, task_id)
+
+        if not upstream_deps:
+            return base_prompt
+
+        context_sections = []
+        for dep in upstream_deps:
+            upstream_task_id = dep["depends_on_task_id"]
+            pass_output = dep.get("pass_output", 1)
+            max_chars = dep.get("max_output_chars", 4000)
+
+            if not pass_output:
+                continue
+
+            latest_run = await db_task_runs.get_latest_successful(db, upstream_task_id)
+            if not latest_run:
+                continue
+
+            upstream_task = await db_tasks.get_by_id(db, upstream_task_id)
+            task_title = dict(upstream_task)["title"] if upstream_task else upstream_task_id[:8]
+
+            result_text = await db_output.get_result_text(db, latest_run["id"], max_chars)
+            if result_text.strip():
+                context_sections.append(
+                    f"=== Output from upstream task: {task_title} ===\n{result_text}"
+                )
+
+        if not context_sections:
+            return base_prompt
+
+        context_block = "\n\n".join(context_sections)
+        return (
+            f"The following context comes from upstream tasks that have already completed:\n\n"
+            f"{context_block}\n\n"
+            f"---\n\n"
+            f"{base_prompt}"
+        )
+
     async def _execute_run(self, run_id: str, run: dict):
         task_id = run["task_id"]
         work_dir = run["work_dir"] or os.getcwd()
         model = run["model"] or "claude-sonnet-4-20250514"
-        prompt = run["prompt"]
+        base_prompt = run["prompt"]
         start_time = datetime.now(timezone.utc)
         seq = 0
         tlog = task_logger(run_id, task_id)
@@ -188,6 +229,13 @@ class Orchestrator:
             permissions = DEFAULT_PERMISSIONS
 
         try:
+            # Build prompt with upstream context (XCom-like data passing)
+            db = await get_db()
+            try:
+                prompt = await self._build_prompt_with_context(db, task_id, base_prompt)
+            finally:
+                await db.close()
+
             cmd = [
                 "claude",
                 "--print",
@@ -294,6 +342,10 @@ class Orchestrator:
                                                  error_message=stderr_data or None)
 
                 if status == "success":
+                    # Store result as xcom for downstream tasks
+                    result_text = await db_output.get_result_text(db, run_id, max_chars=8000)
+                    if result_text.strip():
+                        await db_xcom.insert(db, run_id, task_id, "return_value", result_text)
                     await self._cascade_trigger_downstream(db, task_id)
                 else:
                     # Check if auto-retry is configured

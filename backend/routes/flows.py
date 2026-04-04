@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from database import get_db
 from db import flows as db_flows, tasks as db_tasks, task_runs as db_task_runs
 from db import task_run_output as db_output, task_dependencies as db_deps
-from db import questions as db_questions
+from db import questions as db_questions, task_xcom as db_xcom
 from models import FlowCreate, FlowUpdate
 import cron as cron_parser
 
@@ -89,6 +89,7 @@ async def archive_flow(flow_id: str):
     try:
         await db_task_runs.cancel_by_flow(db, flow_id)
         await db_questions.delete_by_flow(db, flow_id)
+        await db_xcom.delete_by_flow(db, flow_id)
         await db_output.delete_by_flow(db, flow_id)
         await db_task_runs.delete_by_flow(db, flow_id)
         await db_deps.delete_by_flow(db, flow_id)

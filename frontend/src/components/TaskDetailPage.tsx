@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { api, Task, TaskRun, TaskRunOutput } from "../api";
+import { api, Task, TaskRun, TaskRunOutput, UpstreamContextItem } from "../api";
 
 interface Props {
   taskId: string;
@@ -79,6 +79,8 @@ export default function TaskDetailPage({
   const [output, setOutput] = useState<TaskRunOutput[]>([]);
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [deps, setDeps] = useState<{ depends_on: string[] }>({ depends_on: [] });
+  const [upstreamContext, setUpstreamContext] = useState<UpstreamContextItem[]>([]);
+  const [contextExpanded, setContextExpanded] = useState(false);
 
   const loadTask = useCallback(async () => {
     const t = await api.tasks.get(taskId);
@@ -96,11 +98,21 @@ export default function TaskDetailPage({
     setDeps(d);
   }, [taskId]);
 
+  const loadUpstreamContext = useCallback(async () => {
+    try {
+      const ctx = await api.tasks.upstreamContext(taskId);
+      setUpstreamContext(ctx.upstream_context);
+    } catch {
+      setUpstreamContext([]);
+    }
+  }, [taskId]);
+
   useEffect(() => {
     loadTask();
     loadRuns();
     loadDeps();
-  }, [loadTask, loadRuns, loadDeps]);
+    loadUpstreamContext();
+  }, [loadTask, loadRuns, loadDeps, loadUpstreamContext]);
 
   // Load output when selected run changes
   useEffect(() => {
@@ -238,6 +250,40 @@ export default function TaskDetailPage({
               <div className="task-detail-dep-list">
                 {deps.depends_on.map((id) => (
                   <span key={id} className="task-detail-dep-chip">{id.slice(0, 8)}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {upstreamContext.length > 0 && (
+            <div className="task-detail-section">
+              <div className="task-detail-section-label">
+                Upstream Context (XCom)
+                <button
+                  className="btn-link"
+                  style={{ marginLeft: 8, fontSize: "0.85em" }}
+                  onClick={() => setContextExpanded(!contextExpanded)}
+                >
+                  {contextExpanded ? "Hide" : "Show"}
+                </button>
+              </div>
+              <div className="task-detail-upstream-context">
+                {upstreamContext.map((ctx) => (
+                  <div key={ctx.task_id} className="upstream-context-item">
+                    <div className="upstream-context-header">
+                      <span className="upstream-context-title">{ctx.task_title}</span>
+                      {ctx.pass_output ? (
+                        <span className={`upstream-context-badge ${ctx.has_output ? "has-output" : "no-output"}`}>
+                          {ctx.has_output ? `${ctx.output_length} chars` : "no output yet"}
+                        </span>
+                      ) : (
+                        <span className="upstream-context-badge disabled">data passing off</span>
+                      )}
+                    </div>
+                    {contextExpanded && ctx.has_output && ctx.output_preview && (
+                      <pre className="upstream-context-preview">{ctx.output_preview}</pre>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
