@@ -9,6 +9,8 @@ import AgentForm from "./components/AgentForm";
 import TaskFlowView from "./components/TaskFlowView";
 import FlowDashboard from "./components/FlowDashboard";
 import TaskDetailPage from "./components/TaskDetailPage";
+import NewFlowModal from "./components/NewFlowModal";
+import SettingsPage from "./components/SettingsPage";
 
 export interface TaskPrefill {
   title: string;
@@ -25,12 +27,12 @@ export default function App() {
   const [flows, setFlows] = useState<Flow[]>([]);
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null);
   const [showTaskForm, setShowTaskForm] = useState(false);
-  const [view, setView] = useState<"flows" | "agents">("flows");
+  const [view, setView] = useState<"flows" | "agents" | "settings">("flows");
   const [agents, setAgents] = useState<Agent[]>([]);
   const [showAgentForm, setShowAgentForm] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [taskPrefill, setTaskPrefill] = useState<Partial<TaskPrefill> | null>(null);
-  const [showNewFlowForm, setShowNewFlowForm] = useState(false);
+  const [showNewFlowModal, setShowNewFlowModal] = useState(false);
   const [selectedTaskDetail, setSelectedTaskDetail] = useState<string | null>(null);
 
   const loadTasks = useCallback(async () => {
@@ -108,7 +110,7 @@ export default function App() {
       prompt: "",
       model: agent.default_model,
       workDir: agent.default_work_dir,
-      flowId: agent.default_flow_id || "",
+      flowId: agent.default_flow_id || "__new__",
       permissions: agent.default_permissions,
       agentId: agent.id,
     });
@@ -142,15 +144,10 @@ export default function App() {
           setView(v);
           if (v === "flows") setSelectedFlow(null);
         }}
-        onNewFlow={() => {
-          setSelectedFlow(null);
-          setShowNewFlowForm(true);
-        }}
         onNewAgent={() => {
           setEditingAgent(null);
           setShowAgentForm(true);
         }}
-        onQuickTask={handleQuickTask}
       />
       <div className="main-layout">
         <Sidebar
@@ -177,8 +174,8 @@ export default function App() {
           }}
           onRetryFlow={handleRetryFlow}
           onResumeFlow={handleResumeFlow}
-          showNewFlowForm={showNewFlowForm}
-          onShowNewFlowForm={setShowNewFlowForm}
+          onNewFlow={() => setShowNewFlowModal(true)}
+          onQuickTask={handleQuickTask}
         />
         <main className="content">
           {selectedTaskDetail ? (
@@ -190,6 +187,8 @@ export default function App() {
               onTrigger={handleTrigger}
               onRetryTask={handleRetryTask}
             />
+          ) : view === "settings" ? (
+            <SettingsPage />
           ) : view === "agents" ? (
             <AgentList
               agents={agents}
@@ -217,7 +216,7 @@ export default function App() {
               flows={flows}
               tasks={tasks}
               onSelectFlow={setSelectedFlow}
-              onNewFlow={() => setShowNewFlowForm(true)}
+              onNewFlow={() => setShowNewFlowModal(true)}
             />
           )}
         </main>
@@ -236,6 +235,15 @@ export default function App() {
             loadFlows();
           }}
           prefill={taskPrefill}
+        />
+      )}
+      {showNewFlowModal && (
+        <NewFlowModal
+          onClose={() => setShowNewFlowModal(false)}
+          onCreated={(flowId) => {
+            loadFlows();
+            setSelectedFlow(flowId);
+          }}
         />
       )}
       {showAgentForm && (

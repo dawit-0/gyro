@@ -7,7 +7,7 @@ interface Props {
   onSelectFlow: (id: string | null) => void;
   onFlowsChange: () => void;
   tasks: Task[];
-  view: "flows" | "agents";
+  view: "flows" | "agents" | "settings";
   agents: Agent[];
   onNewTask: () => void;
   onNewAgent: () => void;
@@ -16,8 +16,8 @@ interface Props {
   onTriggerFlow: (id: string) => void;
   onRetryFlow: (id: string) => void;
   onResumeFlow: (id: string) => void;
-  showNewFlowForm: boolean;
-  onShowNewFlowForm: (show: boolean) => void;
+  onNewFlow: () => void;
+  onQuickTask: () => void;
 }
 
 export default function Sidebar({
@@ -35,12 +35,10 @@ export default function Sidebar({
   onTriggerFlow,
   onRetryFlow,
   onResumeFlow,
-  showNewFlowForm,
-  onShowNewFlowForm,
+  onNewFlow,
+  onQuickTask,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [localShowForm, setLocalShowForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -50,23 +48,6 @@ export default function Sidebar({
     setConfirmingDelete(false);
     onSelectFlow(null);
     onFlowsChange();
-  }
-
-  const showForm = showNewFlowForm || localShowForm;
-
-  async function handleCreate() {
-    if (!newName.trim()) return;
-    await api.flows.create({ name: newName.trim() });
-    setNewName("");
-    setLocalShowForm(false);
-    onShowNewFlowForm(false);
-    onFlowsChange();
-  }
-
-  function handleCloseForm() {
-    setLocalShowForm(false);
-    onShowNewFlowForm(false);
-    setNewName("");
   }
 
   const runningTasks = tasks.filter(
@@ -129,6 +110,24 @@ export default function Sidebar({
           {/* ── Flows Tab ── */}
           {view === "flows" && !selectedFlow && (
             <>
+              {/* Actions */}
+              <div className="sidebar-section">
+                <h3>Actions</h3>
+                <button className="sidebar-action-btn" onClick={onNewFlow}>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                  New Flow
+                </button>
+                <button className="sidebar-action-btn" onClick={onQuickTask}>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path d="M13 2L3 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M3 2l4 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                  Quick Task
+                </button>
+              </div>
+
               {/* Search */}
               <div className="sidebar-section" style={{ borderBottom: "none", paddingBottom: 0 }}>
                 <div className="sidebar-search">
@@ -183,28 +182,6 @@ export default function Sidebar({
                 })}
                 {filteredFlows.length === 0 && searchQuery && (
                   <div className="sidebar-empty-hint">No flows match "{searchQuery}"</div>
-                )}
-                {showForm ? (
-                  <div style={{ marginTop: 8 }}>
-                    <input
-                      value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                      placeholder="Flow name"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleCreate();
-                        if (e.key === "Escape") handleCloseForm();
-                      }}
-                      className="sidebar-inline-input"
-                      autoFocus
-                    />
-                  </div>
-                ) : (
-                  <div
-                    className="project-item sidebar-add-item"
-                    onClick={() => setLocalShowForm(true)}
-                  >
-                    + New Flow
-                  </div>
                 )}
               </div>
 
