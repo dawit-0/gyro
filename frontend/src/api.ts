@@ -53,7 +53,7 @@ export interface Task {
   model: string;
   work_dir: string;
   flow_id: string;
-  assistant_id: string | null;
+  agent_id: string | null;
   permissions: Permissions;
   schedule: string | null;
   schedule_enabled: boolean;
@@ -135,7 +135,7 @@ export interface ContextItem {
   content?: string;
 }
 
-export interface Assistant {
+export interface Agent {
   id: string;
   name: string;
   description: string;
@@ -163,7 +163,7 @@ export const api = {
       flow_id?: string;
       permissions?: Permissions;
       schedule?: string;
-      assistant_id?: string;
+      agent_id?: string;
       depends_on?: string[];
       max_retries?: number;
       retry_delay_seconds?: number;
@@ -269,9 +269,9 @@ export const api = {
         { method: "POST" }
       ),
   },
-  assistants: {
-    list: () => request<Assistant[]>("/assistants"),
-    get: (id: string) => request<Assistant>(`/assistants/${id}`),
+  agents: {
+    list: () => request<Agent[]>("/agents"),
+    get: (id: string) => request<Agent>(`/agents/${id}`),
     create: (data: {
       name: string;
       description?: string;
@@ -282,7 +282,7 @@ export const api = {
       default_work_dir?: string;
       default_flow_id?: string;
     }) =>
-      request<Assistant>("/assistants", {
+      request<Agent>("/agents", {
         method: "POST",
         body: JSON.stringify(data),
       }),
@@ -299,12 +299,12 @@ export const api = {
         default_flow_id: string;
       }>
     ) =>
-      request<Assistant>(`/assistants/${id}`, {
+      request<Agent>(`/agents/${id}`, {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
     delete: (id: string) =>
-      request<{ ok: boolean }>(`/assistants/${id}`, { method: "DELETE" }),
+      request<{ ok: boolean }>(`/agents/${id}`, { method: "DELETE" }),
     spawn: (
       id: string,
       data: {
@@ -319,7 +319,7 @@ export const api = {
         trigger?: boolean;
       }
     ) =>
-      request<Task>(`/assistants/${id}/spawn`, {
+      request<Task>(`/agents/${id}/spawn`, {
         method: "POST",
         body: JSON.stringify(data),
       }),

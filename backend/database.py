@@ -28,7 +28,7 @@ async def init_db():
                 archived INTEGER DEFAULT 0
             );
 
-            CREATE TABLE IF NOT EXISTS assistants (
+            CREATE TABLE IF NOT EXISTS agents (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 description TEXT DEFAULT '',
@@ -51,7 +51,7 @@ async def init_db():
                 model TEXT DEFAULT 'claude-sonnet-4-20250514',
                 work_dir TEXT DEFAULT '',
                 flow_id TEXT NOT NULL REFERENCES flows(id),
-                assistant_id TEXT REFERENCES assistants(id),
+                agent_id TEXT REFERENCES agents(id),
                 permissions TEXT DEFAULT '{}',
                 schedule TEXT,
                 schedule_enabled INTEGER DEFAULT 1,

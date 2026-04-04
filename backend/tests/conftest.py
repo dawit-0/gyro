@@ -42,7 +42,7 @@ async def _init_test_db():
                 created_at TEXT DEFAULT (datetime('now')),
                 archived INTEGER DEFAULT 0
             );
-            CREATE TABLE IF NOT EXISTS assistants (
+            CREATE TABLE IF NOT EXISTS agents (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 description TEXT DEFAULT '',
@@ -64,7 +64,7 @@ async def _init_test_db():
                 model TEXT DEFAULT 'claude-sonnet-4-20250514',
                 work_dir TEXT DEFAULT '',
                 flow_id TEXT REFERENCES flows(id),
-                assistant_id TEXT REFERENCES assistants(id),
+                agent_id TEXT REFERENCES agents(id),
                 permissions TEXT DEFAULT '{}',
                 schedule TEXT,
                 schedule_enabled INTEGER DEFAULT 1,
@@ -130,7 +130,7 @@ async def _wipe_all_tables():
     try:
         for table in (
             "task_run_output", "questions", "task_runs",
-            "task_dependencies", "tasks", "assistants", "flows",
+            "task_dependencies", "tasks", "agents", "flows",
         ):
             await db.execute(f"DELETE FROM {table}")
         await db.commit()
@@ -174,7 +174,7 @@ async def client():
         patch("routes.tasks.get_db", _get_test_db),
         patch("routes.task_runs.get_db", _get_test_db),
         patch("routes.flows.get_db", _get_test_db),
-        patch("routes.assistants.get_db", _get_test_db),
+        patch("routes.agents.get_db", _get_test_db),
         patch("orchestrator.get_db", _get_test_db),
     ):
         from main import app

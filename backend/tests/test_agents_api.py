@@ -7,9 +7,9 @@ pytestmark = pytest.mark.asyncio
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-async def _create_assistant(client, name="Test Assistant", **kwargs):
+async def _create_agent(client, name="Test Agent", **kwargs):
     payload = {"name": name, **kwargs}
-    resp = await client.post("/api/assistants", json=payload)
+    resp = await client.post("/api/agents", json=payload)
     assert resp.status_code == 200
     return resp.json()
 
@@ -22,76 +22,76 @@ async def _create_flow(client, name="Flow"):
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
 
-async def test_create_assistant(client, db):
-    data = await _create_assistant(client, name="Code Helper", description="Helps with code")
+async def test_create_agent(client, db):
+    data = await _create_agent(client, name="Code Helper", description="Helps with code")
     assert data["name"] == "Code Helper"
     assert data["description"] == "Helps with code"
     assert data["id"]
 
     # Verify row exists in DB
-    cursor = await db.execute("SELECT * FROM assistants WHERE id = ?", (data["id"],))
+    cursor = await db.execute("SELECT * FROM agents WHERE id = ?", (data["id"],))
     row = await cursor.fetchone()
     assert row is not None
     assert row["name"] == "Code Helper"
     assert row["description"] == "Helps with code"
 
 
-async def test_create_assistant_with_context(client):
+async def test_create_agent_with_context(client):
     ctx = [{"type": "text", "content": "Always use Python 3.12"}]
-    data = await _create_assistant(client, context=ctx)
+    data = await _create_agent(client, context=ctx)
     assert data["context"] == ctx
 
 
-async def test_list_assistants(client):
-    await _create_assistant(client, name="A")
-    await _create_assistant(client, name="B")
-    resp = await client.get("/api/assistants")
+async def test_list_agents(client):
+    await _create_agent(client, name="A")
+    await _create_agent(client, name="B")
+    resp = await client.get("/api/agents")
     assert resp.status_code == 200
     assert len(resp.json()) == 2
 
 
-async def test_get_assistant(client):
-    asst = await _create_assistant(client)
-    resp = await client.get(f"/api/assistants/{asst['id']}")
+async def test_get_agent(client):
+    agent = await _create_agent(client)
+    resp = await client.get(f"/api/agents/{agent['id']}")
     assert resp.status_code == 200
-    assert resp.json()["id"] == asst["id"]
+    assert resp.json()["id"] == agent["id"]
 
 
-async def test_update_assistant(client):
-    asst = await _create_assistant(client, name="Old")
-    resp = await client.patch(f"/api/assistants/{asst['id']}", json={"name": "New"})
+async def test_update_agent(client):
+    agent = await _create_agent(client, name="Old")
+    resp = await client.patch(f"/api/agents/{agent['id']}", json={"name": "New"})
     assert resp.status_code == 200
     assert resp.json()["name"] == "New"
 
 
-async def test_delete_assistant(client, db):
-    asst = await _create_assistant(client)
-    resp = await client.delete(f"/api/assistants/{asst['id']}")
+async def test_delete_agent(client, db):
+    agent = await _create_agent(client)
+    resp = await client.delete(f"/api/agents/{agent['id']}")
     assert resp.status_code == 200
     assert resp.json()["ok"] is True
 
     # Verify row is gone from DB
-    cursor = await db.execute("SELECT COUNT(*) FROM assistants WHERE id = ?", (asst["id"],))
+    cursor = await db.execute("SELECT COUNT(*) FROM agents WHERE id = ?", (agent["id"],))
     assert (await cursor.fetchone())[0] == 0
 
 
 # ── Spawn ────────────────────────────────────────────────────────────────────
 
-async def test_spawn_task_from_assistant(client, db):
-    asst = await _create_assistant(
+async def test_spawn_task_from_agent(client, db):
+    agent = await _create_agent(
         client,
         name="Builder",
         instructions="Build great things",
         default_model="claude-sonnet-4-20250514",
     )
-    resp = await client.post(f"/api/assistants/{asst['id']}/spawn", json={
+    resp = await client.post(f"/api/agents/{agent['id']}/spawn", json={
         "title": "Spawned Task",
         "prompt": "build a widget",
     })
     assert resp.status_code == 200
     task = resp.json()
     assert task["title"] == "Spawned Task"
-    assert task["assistant_id"] == asst["id"]
+    assert task["agent_id"] == agent["id"]
     # Should have merged the instructions into the prompt
     assert "Build great things" in task["prompt"]
     assert "build a widget" in task["prompt"]
@@ -99,11 +99,11 @@ async def test_spawn_task_from_assistant(client, db):
     assert "triggered_run" in task
     assert task["triggered_run"]["run_number"] == 1
 
-    # Verify task row in DB with assistant_id link
+    # Verify task row in DB with agent_id link
     cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task["id"],))
     row = await cursor.fetchone()
     assert row is not None
-    assert row["assistant_id"] == asst["id"]
+    assert row["agent_id"] == agent["id"]
     assert row["title"] == "Spawned Task"
 
     # Verify the triggered run row in DB
@@ -115,8 +115,8 @@ async def test_spawn_task_from_assistant(client, db):
 
 
 async def test_spawn_task_without_trigger(client):
-    asst = await _create_assistant(client)
-    resp = await client.post(f"/api/assistants/{asst['id']}/spawn", json={
+    agent = await _create_agent(client)
+    resp = await client.post(f"/api/agents/{agent['id']}/spawn", json={
         "title": "No Trigger",
         "trigger": False,
     })
@@ -127,8 +127,8 @@ async def test_spawn_task_without_trigger(client):
 
 async def test_spawn_task_inherits_flow(client):
     flow = await _create_flow(client)
-    asst = await _create_assistant(client, default_flow_id=flow["id"])
-    resp = await client.post(f"/api/assistants/{asst['id']}/spawn", json={
+    agent = await _create_agent(client, default_flow_id=flow["id"])
+    resp = await client.post(f"/api/agents/{agent['id']}/spawn", json={
         "title": "Inherited Flow",
         "trigger": False,
     })
@@ -136,8 +136,8 @@ async def test_spawn_task_inherits_flow(client):
     assert resp.json()["flow_id"] == flow["id"]
 
 
-async def test_spawn_nonexistent_assistant(client):
-    resp = await client.post("/api/assistants/bad-id/spawn", json={
+async def test_spawn_nonexistent_agent(client):
+    resp = await client.post("/api/agents/bad-id/spawn", json={
         "title": "Oops",
     })
     # The route returns a tuple (dict, 404) which FastAPI serializes as 200 with the tuple

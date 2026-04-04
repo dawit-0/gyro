@@ -59,9 +59,9 @@ Key flow capabilities:
 - **Flow-level scheduling** — Set a cron schedule on a flow to automatically trigger all root tasks (those with no upstream dependencies)
 - **Manual trigger** — Trigger all root tasks in a flow on demand
 
-### Assistants
+### Agents
 
-Reusable agent templates that bundle instructions, context, and default settings. Create an assistant once, then spawn tasks from it without re-entering configuration each time. Assistants support custom instructions (system prompts), attached context (files, URLs, or text), and default model/permissions/working directory.
+Reusable agent templates that bundle instructions, context, and default settings. Create an agent once, then spawn tasks from it without re-entering configuration each time. Agents support custom instructions (system prompts), attached context (files, URLs, or text), and default model/permissions/working directory.
 
 ### Scheduling
 
@@ -87,8 +87,8 @@ Permissions are enforced via the Claude CLI `--allowedTools` flag.
 ## Usage
 
 1. **Create a Flow** (optional) — Organize related tasks into a dependency graph.
-2. **Create an Assistant** (optional) — Define a reusable template with instructions, context, and defaults.
-3. **Create a Task** — Click "+ New Task", enter a title, prompt, select a model, set permissions, configure dependencies, and optionally set a schedule or working directory. Or spawn a task directly from an assistant.
+2. **Create an Agent** (optional) — Define a reusable template with instructions, context, and defaults.
+3. **Create a Task** — Click "+ New Task", enter a title, prompt, select a model, set permissions, configure dependencies, and optionally set a schedule or working directory. Or spawn a task directly from an agent.
 4. **Watch it run** — The orchestrator picks up queued tasks (up to 5 concurrent), spawns a Claude agent, and streams output in real-time. View the DAG visualization to monitor flow progress.
 5. **Cancel / Delete** — Cancel running tasks or delete completed ones from the dashboard.
 

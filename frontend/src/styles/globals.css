@@ -696,15 +696,15 @@ input, textarea, select {
   box-shadow: var(--shadow-sm);
 }
 
-/* ===== Assistant Grid ===== */
-.assistant-grid {
+/* ===== Agent Grid ===== */
+.agent-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 16px;
 }
 
-/* ===== Assistant Card ===== */
-.assistant-card {
+/* ===== Agent Card ===== */
+.agent-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -716,25 +716,25 @@ input, textarea, select {
   box-shadow: var(--shadow-sm);
 }
 
-.assistant-card:hover {
+.agent-card:hover {
   border-color: var(--border-strong);
   box-shadow: var(--shadow-md);
 }
 
-.assistant-card-header {
+.agent-card-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
 }
 
-.assistant-card-title {
+.agent-card-title {
   font-size: 0.9375rem;
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.assistant-card-badges {
+.agent-card-badges {
   display: flex;
   gap: 6px;
   flex-shrink: 0;
@@ -759,25 +759,25 @@ input, textarea, select {
   color: var(--success);
 }
 
-.assistant-card-description {
+.agent-card-description {
   font-size: 0.8125rem;
   color: var(--text-secondary);
   line-height: 1.4;
 }
 
-.assistant-card-instructions {
+.agent-card-instructions {
   font-size: 0.775rem;
   color: var(--text-muted);
   line-height: 1.4;
   font-style: italic;
 }
 
-.assistant-card-meta {
+.agent-card-meta {
   font-size: 0.725rem;
   color: var(--text-muted);
 }
 
-.assistant-card-actions {
+.agent-card-actions {
   display: flex;
   gap: 6px;
   margin-top: 4px;
@@ -1100,8 +1100,8 @@ input, textarea, select {
   padding-left: 14px;
 }
 
-/* ===== Assistant items in sidebar ===== */
-.sidebar-assistant-item {
+/* ===== Agent items in sidebar ===== */
+.sidebar-agent-item {
   padding: 10px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
@@ -1110,18 +1110,18 @@ input, textarea, select {
   transition: border-color 0.15s;
 }
 
-.sidebar-assistant-item:hover {
+.sidebar-agent-item:hover {
   border-color: var(--border-strong);
 }
 
-.sidebar-assistant-name {
+.sidebar-agent-name {
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 2px;
 }
 
-.sidebar-assistant-desc {
+.sidebar-agent-desc {
   font-size: 0.725rem;
   color: var(--text-muted);
   margin-bottom: 6px;
@@ -1131,7 +1131,7 @@ input, textarea, select {
   overflow: hidden;
 }
 
-.sidebar-assistant-actions {
+.sidebar-agent-actions {
   display: flex;
   gap: 6px;
 }
