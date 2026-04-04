@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { api, Task, Flow, Permissions, PERMISSION_PRESETS } from "../api";
+import React, { useState, useEffect } from "react";
+import { api, Task, Flow, Model, Permissions, PERMISSION_PRESETS } from "../api";
 import { TaskPrefill } from "../App";
 
 interface Props {
@@ -11,10 +11,10 @@ interface Props {
   prefill?: Partial<TaskPrefill> | null;
 }
 
-const MODELS = [
-  { value: "claude-sonnet-4-20250514", label: "Claude Sonnet" },
-  { value: "claude-opus-4-20250514", label: "Claude Opus" },
-  { value: "claude-haiku-3-5-20241022", label: "Claude Haiku" },
+const FALLBACK_MODELS: Model[] = [
+  { value: "claude-sonnet-4-20250514", label: "Claude Sonnet", provider: "claude" },
+  { value: "claude-opus-4-20250514", label: "Claude Opus", provider: "claude" },
+  { value: "claude-haiku-3-5-20241022", label: "Claude Haiku", provider: "claude" },
 ];
 
 const CRON_PRESETS = [
@@ -34,9 +34,14 @@ function describeCron(expr: string): string {
 const NEW_FLOW_VALUE = "__new__";
 
 export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreated, prefill }: Props) {
+  const [models, setModels] = useState<Model[]>(FALLBACK_MODELS);
   const [title, setTitle] = useState(prefill?.title || "");
   const [prompt, setPrompt] = useState(prefill?.prompt || "");
-  const [model, setModel] = useState(prefill?.model || MODELS[0].value);
+  const [model, setModel] = useState(prefill?.model || FALLBACK_MODELS[0].value);
+
+  useEffect(() => {
+    api.models.list().then(setModels).catch(() => {});
+  }, []);
   const [workDir, setWorkDir] = useState(prefill?.workDir || "");
   const [flowId, setFlowId] = useState(prefill?.flowId || selectedFlow || (flows.length > 0 ? flows[0].id : NEW_FLOW_VALUE));
   const [newFlowName, setNewFlowName] = useState("");
@@ -275,10 +280,19 @@ export default function TaskForm({ flows, tasks, selectedFlow, onClose, onCreate
           <div className="form-group">
             <label>Model</label>
             <select value={model} onChange={(e) => setModel(e.target.value)}>
-              {MODELS.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
+              {Object.entries(
+                models.reduce<Record<string, Model[]>>((groups, m) => {
+                  (groups[m.provider] ??= []).push(m);
+                  return groups;
+                }, {})
+              ).map(([provider, group]) => (
+                <optgroup key={provider} label={provider === "claude" ? "Anthropic" : "OpenAI"}>
+                  {group.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>

@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { api, Flow, Agent, ContextItem, Permissions, PERMISSION_PRESETS } from "../api";
+import React, { useState, useEffect } from "react";
+import { api, Flow, Agent, Model, ContextItem, Permissions, PERMISSION_PRESETS } from "../api";
 
 interface Props {
   flows: Flow[];
@@ -8,18 +8,23 @@ interface Props {
   onSaved: () => void;
 }
 
-const MODELS = [
-  { value: "claude-sonnet-4-20250514", label: "Claude Sonnet" },
-  { value: "claude-opus-4-20250514", label: "Claude Opus" },
-  { value: "claude-haiku-3-5-20241022", label: "Claude Haiku" },
+const FALLBACK_MODELS: Model[] = [
+  { value: "claude-sonnet-4-20250514", label: "Claude Sonnet", provider: "claude" },
+  { value: "claude-opus-4-20250514", label: "Claude Opus", provider: "claude" },
+  { value: "claude-haiku-3-5-20241022", label: "Claude Haiku", provider: "claude" },
 ];
 
 export default function AgentForm({ flows, agent, onClose, onSaved }: Props) {
+  const [models, setModels] = useState<Model[]>(FALLBACK_MODELS);
   const [name, setName] = useState(agent?.name || "");
   const [description, setDescription] = useState(agent?.description || "");
   const [instructions, setInstructions] = useState(agent?.instructions || "");
   const [context, setContext] = useState<ContextItem[]>(agent?.context || []);
-  const [defaultModel, setDefaultModel] = useState(agent?.default_model || MODELS[0].value);
+  const [defaultModel, setDefaultModel] = useState(agent?.default_model || FALLBACK_MODELS[0].value);
+
+  useEffect(() => {
+    api.models.list().then(setModels).catch(() => {});
+  }, []);
   const [permissions, setPermissions] = useState<Permissions>(
     agent?.default_permissions?.preset
       ? agent.default_permissions
@@ -164,10 +169,19 @@ export default function AgentForm({ flows, agent, onClose, onSaved }: Props) {
           <div className="form-group">
             <label>Default Model</label>
             <select value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)}>
-              {MODELS.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
+              {Object.entries(
+                models.reduce<Record<string, Model[]>>((groups, m) => {
+                  (groups[m.provider] ??= []).push(m);
+                  return groups;
+                }, {})
+              ).map(([provider, group]) => (
+                <optgroup key={provider} label={provider === "claude" ? "Anthropic" : "OpenAI"}>
+                  {group.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>
