@@ -109,6 +109,7 @@ interface Props {
   onRetryTask: (id: string) => void;
   onRetryFlow: (id: string) => void;
   onResumeFlow: (id: string) => void;
+  onViewTaskDetail: (id: string) => void;
 }
 
 export default function TaskFlowView({
@@ -119,6 +120,7 @@ export default function TaskFlowView({
   onRetryTask,
   onRetryFlow,
   onResumeFlow,
+  onViewTaskDetail,
 }: Props) {
   const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[]);
@@ -316,6 +318,7 @@ export default function TaskFlowView({
           onTrigger={handleTrigger}
           onRetryTask={handleRetryTask}
           onNodeSelect={(id) => setSelectedNodeId(id)}
+          onViewDetail={onViewTaskDetail}
         />
       )}
     </div>
