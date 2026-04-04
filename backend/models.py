@@ -38,13 +38,14 @@ class TaskCreate(BaseModel):
     model: str = "claude-sonnet-4-20250514"
     priority: int = 0
     work_dir: str = ""
-    flow_id: str
+    flow_id: Optional[str] = None
     permissions: Optional[dict] = None
     schedule: Optional[str] = None
     assistant_id: Optional[str] = None
     depends_on: Optional[list[str]] = None
     max_retries: int = 0
     retry_delay_seconds: int = 10
+    trigger: bool = False
 
 
 class TaskUpdate(BaseModel):

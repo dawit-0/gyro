@@ -190,6 +190,15 @@ async def create_task(body: TaskCreate):
     permissions_json = json.dumps(permissions)
     db = await get_db()
     try:
+        # Auto-create a flow if none provided
+        flow_id = body.flow_id
+        if not flow_id:
+            flow_id = str(uuid.uuid4())
+            await db.execute(
+                "INSERT INTO flows (id, name) VALUES (?, ?)",
+                (flow_id, body.title),
+            )
+
         depends_on = list(body.depends_on or [])
 
         if depends_on:
@@ -215,7 +224,7 @@ async def create_task(body: TaskCreate):
                                   max_retries, retry_delay_seconds)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (task_id, body.title, body.prompt, body.model, body.priority,
-             body.work_dir, body.flow_id, body.assistant_id, permissions_json,
+             body.work_dir, flow_id, body.assistant_id, permissions_json,
              body.schedule, next_run_at, body.max_retries, body.retry_delay_seconds),
         )
 
@@ -225,6 +234,15 @@ async def create_task(body: TaskCreate):
                     "INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_task_id) VALUES (?, ?)",
                     (task_id, dep_id),
                 )
+
+        # Trigger immediately if requested and no schedule
+        if body.trigger and not body.schedule:
+            run_id = str(uuid.uuid4())
+            await db.execute(
+                """INSERT INTO task_runs (id, task_id, run_number, trigger, status)
+                   VALUES (?, ?, 1, 'manual', 'queued')""",
+                (run_id, task_id),
+            )
 
         await db.commit()
         cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))

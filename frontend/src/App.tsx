@@ -29,7 +29,6 @@ export default function App() {
   const [showAssistantForm, setShowAssistantForm] = useState(false);
   const [editingAssistant, setEditingAssistant] = useState<Assistant | null>(null);
   const [taskPrefill, setTaskPrefill] = useState<Partial<TaskPrefill> | null>(null);
-  const [showQuickTask, setShowQuickTask] = useState(false);
   const [showNewFlowForm, setShowNewFlowForm] = useState(false);
 
   const loadTasks = useCallback(async () => {
@@ -125,15 +124,11 @@ export default function App() {
     loadAssistants();
   }
 
-  async function handleQuickTask(title: string, prompt: string) {
-    const task = await api.tasks.quickCreate({ title, prompt, trigger: true });
-    loadTasks();
-    loadFlows();
-    setShowQuickTask(false);
-    // Auto-select the created flow
-    if (task && task.flow_id) {
-      setSelectedFlow(task.flow_id);
-    }
+  function handleQuickTask() {
+    setTaskPrefill({
+      flowId: "__new__",
+    });
+    setShowTaskForm(true);
   }
 
   return (
@@ -153,7 +148,7 @@ export default function App() {
           setEditingAssistant(null);
           setShowAssistantForm(true);
         }}
-        onQuickTask={() => setShowQuickTask(true)}
+        onQuickTask={handleQuickTask}
       />
       <div className="main-layout">
         <Sidebar
@@ -242,71 +237,6 @@ export default function App() {
           onSaved={loadAssistants}
         />
       )}
-      {showQuickTask && (
-        <QuickTaskModal
-          onClose={() => setShowQuickTask(false)}
-          onSubmit={handleQuickTask}
-        />
-      )}
-    </div>
-  );
-}
-
-function QuickTaskModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (title: string, prompt: string) => void }) {
-  const [title, setTitle] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!title.trim() || !prompt.trim()) return;
-    setSubmitting(true);
-    try {
-      await onSubmit(title.trim(), prompt.trim());
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Quick Task</h2>
-        <p style={{ color: "var(--text-secondary)", marginBottom: 16, fontSize: 13 }}>
-          Creates a new flow with a single task and runs it immediately.
-        </p>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Title</label>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Brief description"
-              autoFocus
-            />
-          </div>
-          <div className="form-group">
-            <label>Prompt</label>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Instructions for the agent..."
-            />
-          </div>
-          <div className="form-actions">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={submitting || !title.trim() || !prompt.trim()}
-            >
-              {submitting ? "Creating..." : "Create & Run"}
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }
