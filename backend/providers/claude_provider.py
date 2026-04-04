@@ -41,6 +41,7 @@ class ClaudeProvider(BaseProvider):
             "claude",
             "--print",
             "--output-format", "stream-json",
+            "--verbose",
             "--model", model,
         ]
 
@@ -49,14 +50,16 @@ class ClaudeProvider(BaseProvider):
             for tool in allowed_tools:
                 cmd.extend(["--allowedTools", tool])
 
-        cmd.append(prompt)
-
         self.proc = await asyncio.create_subprocess_exec(
             *cmd,
+            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=work_dir,
         )
+        # Feed prompt via stdin so special characters / quoting are never an issue
+        self.proc.stdin.write(prompt.encode("utf-8"))
+        self.proc.stdin.close()
         self.pid = self.proc.pid
 
         yield ProviderEvent(
