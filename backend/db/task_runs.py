@@ -159,6 +159,15 @@ async def get_queued_ready(db: aiosqlite.Connection, limit: int) -> list[dict]:
     return [dict(r) for r in await cursor.fetchall()]
 
 
+async def get_latest_successful(db: aiosqlite.Connection, task_id: str) -> aiosqlite.Row | None:
+    cursor = await db.execute(
+        """SELECT * FROM task_runs WHERE task_id = ? AND status = 'success'
+           ORDER BY run_number DESC LIMIT 1""",
+        (task_id,),
+    )
+    return await cursor.fetchone()
+
+
 async def get_active_run(db: aiosqlite.Connection, task_id: str) -> aiosqlite.Row | None:
     cursor = await db.execute(
         "SELECT id FROM task_runs WHERE task_id = ? AND status IN ('running', 'queued') ORDER BY run_number DESC LIMIT 1",

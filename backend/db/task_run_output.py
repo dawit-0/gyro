@@ -24,6 +24,28 @@ async def delete_by_task(db: aiosqlite.Connection, task_id: str) -> None:
     )
 
 
+async def get_result_text(db: aiosqlite.Connection, run_id: str,
+                          max_chars: int = 4000) -> str:
+    """Extract the final assistant/text/result output from a task run, truncated to max_chars."""
+    cursor = await db.execute(
+        """SELECT content FROM task_run_output
+           WHERE task_run_id = ? AND type IN ('assistant', 'text', 'result')
+           ORDER BY seq ASC""",
+        (run_id,),
+    )
+    rows = await cursor.fetchall()
+    parts = []
+    total = 0
+    for row in rows:
+        content = row["content"]
+        if total + len(content) > max_chars:
+            parts.append(content[:max_chars - total])
+            break
+        parts.append(content)
+        total += len(content)
+    return "\n".join(parts)
+
+
 async def delete_by_flow(db: aiosqlite.Connection, flow_id: str) -> None:
     await db.execute(
         """DELETE FROM task_run_output

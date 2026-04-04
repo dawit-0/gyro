@@ -110,6 +110,17 @@ export interface DagNode {
 export interface DagEdge {
   source: string;
   target: string;
+  pass_output?: boolean;
+}
+
+export interface UpstreamContextItem {
+  task_id: string;
+  task_title: string;
+  pass_output: boolean;
+  max_output_chars: number;
+  has_output: boolean;
+  output_preview: string;
+  output_length: number;
 }
 
 export interface DagGraph {
@@ -187,6 +198,8 @@ export const api = {
       schedule?: string;
       agent_id?: string;
       depends_on?: string[];
+      pass_output?: boolean;
+      max_output_chars?: number;
       max_retries?: number;
       retry_delay_seconds?: number;
     }) => request<Task>("/tasks", { method: "POST", body: JSON.stringify(data) }),
@@ -225,11 +238,15 @@ export const api = {
       request<DagGraph>(`/tasks/dag${flowId ? `?flow_id=${flowId}` : ""}`),
     dependencies: (id: string) =>
       request<{ task_id: string; depends_on: string[] }>(`/tasks/${id}/dependencies`),
-    addDependencies: (taskId: string, dependsOn: string[]) =>
+    addDependencies: (taskId: string, dependsOn: string[], passOutput = true, maxOutputChars = 4000) =>
       request<{ ok: boolean }>(`/tasks/${taskId}/dependencies`, {
         method: "POST",
-        body: JSON.stringify({ depends_on: dependsOn }),
+        body: JSON.stringify({ depends_on: dependsOn, pass_output: passOutput, max_output_chars: maxOutputChars }),
       }),
+    upstreamContext: (taskId: string) =>
+      request<{ task_id: string; upstream_context: UpstreamContextItem[] }>(`/tasks/${taskId}/upstream-context`),
+    xcom: (taskId: string) =>
+      request<{ task_id: string; run_id?: string; xcom: Array<{ key: string; value: string }> }>(`/tasks/${taskId}/xcom`),
     removeDependency: (taskId: string, depId: string) =>
       request<{ ok: boolean }>(`/tasks/${taskId}/dependencies/${depId}`, {
         method: "DELETE",
@@ -251,6 +268,7 @@ export const api = {
       request<TaskRun[]>(`/task-runs${taskId ? `?task_id=${taskId}` : ""}`),
     get: (id: string) => request<TaskRun>(`/task-runs/${id}`),
     output: (id: string) => request<TaskRunOutput[]>(`/task-runs/${id}/output`),
+    xcom: (id: string) => request<{ run_id: string; xcom: Array<{ key: string; value: string }> }>(`/task-runs/${id}/xcom`),
   },
   flows: {
     list: () => request<Flow[]>("/flows"),

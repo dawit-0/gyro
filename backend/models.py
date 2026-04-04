@@ -43,6 +43,8 @@ class TaskCreate(BaseModel):
     schedule: Optional[str] = None
     agent_id: Optional[str] = None
     depends_on: Optional[list[str]] = None
+    pass_output: bool = True
+    max_output_chars: int = 4000
     max_retries: int = 0
     retry_delay_seconds: int = 10
     trigger: bool = False
@@ -67,8 +69,16 @@ class TaskTrigger(BaseModel):
     prompt_override: Optional[str] = None
 
 
+class DependencyConfig(BaseModel):
+    task_id: str
+    pass_output: bool = True
+    max_output_chars: int = 4000
+
+
 class DependencyAdd(BaseModel):
     depends_on: list[str]
+    pass_output: bool = True
+    max_output_chars: int = 4000
 
 
 class FlowCreate(BaseModel):

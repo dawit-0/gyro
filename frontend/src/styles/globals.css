@@ -2335,3 +2335,81 @@ input, textarea, select {
   border-radius: var(--radius-sm);
 }
 
+/* Data passing config */
+.data-passing-config {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* Upstream context display in TaskDetailPage */
+.task-detail-upstream-context {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.upstream-context-item {
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.upstream-context-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.upstream-context-title {
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 0.9em;
+}
+
+.upstream-context-badge {
+  font-size: 0.75em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.upstream-context-badge.has-output {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--success);
+}
+
+.upstream-context-badge.no-output {
+  background: rgba(113, 113, 122, 0.15);
+  color: var(--text-muted);
+}
+
+.upstream-context-badge.disabled {
+  background: rgba(113, 113, 122, 0.1);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.upstream-context-preview {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.8em;
+  color: var(--text-secondary);
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Data-passing edge in DAG view */
+.react-flow__edge-path.data-edge {
+  stroke-width: 3;
+}
+

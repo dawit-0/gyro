@@ -78,6 +78,8 @@ async def _init_test_db():
             CREATE TABLE IF NOT EXISTS task_dependencies (
                 task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
                 depends_on_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                pass_output INTEGER DEFAULT 1,
+                max_output_chars INTEGER DEFAULT 4000,
                 PRIMARY KEY (task_id, depends_on_task_id)
             );
             CREATE INDEX IF NOT EXISTS idx_task_deps_task ON task_dependencies(task_id);
@@ -108,6 +110,16 @@ async def _init_test_db():
                 content TEXT NOT NULL,
                 timestamp TEXT DEFAULT (datetime('now'))
             );
+            CREATE TABLE IF NOT EXISTS task_xcom (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_run_id TEXT NOT NULL REFERENCES task_runs(id),
+                task_id TEXT NOT NULL REFERENCES tasks(id),
+                key TEXT NOT NULL DEFAULT 'return_value',
+                value TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(task_run_id, key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_xcom_task ON task_xcom(task_id);
             CREATE TABLE IF NOT EXISTS questions (
                 id TEXT PRIMARY KEY,
                 task_run_id TEXT NOT NULL REFERENCES task_runs(id),
@@ -129,7 +141,7 @@ async def _wipe_all_tables():
     db = await _get_test_db()
     try:
         for table in (
-            "task_run_output", "questions", "task_runs",
+            "task_run_output", "task_xcom", "questions", "task_runs",
             "task_dependencies", "tasks", "agents", "flows",
         ):
             await db.execute(f"DELETE FROM {table}")

@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from database import get_db
 from db import tasks as db_tasks, task_runs as db_task_runs, flows as db_flows
 from db import task_dependencies as db_deps, task_run_output as db_output
-from db import questions as db_questions
+from db import questions as db_questions, task_xcom as db_xcom
 from models import TaskCreate, TaskUpdate, TaskTrigger, DependencyAdd, QuickTaskCreate, DEFAULT_PERMISSIONS
 import cron as cron_parser
 
@@ -154,7 +154,9 @@ async def create_task(body: TaskCreate):
 
         for dep_id in depends_on:
             if dep_id != task_id:
-                await db_deps.insert(db, task_id, dep_id)
+                await db_deps.insert_with_config(db, task_id, dep_id,
+                                                  pass_output=body.pass_output,
+                                                  max_output_chars=body.max_output_chars)
 
         # Trigger immediately if requested and no schedule
         if body.trigger and not body.schedule:
@@ -213,6 +215,7 @@ async def delete_task(task_id: str):
     try:
         await db_deps.delete_for_task(db, task_id)
         await db_output.delete_by_task(db, task_id)
+        await db_xcom.delete_by_task(db, task_id)
         await db_questions.delete_by_task(db, task_id)
         await db_task_runs.delete_by_task(db, task_id)
         await db_tasks.delete(db, task_id)
@@ -287,7 +290,9 @@ async def add_task_dependencies(task_id: str, body: DependencyAdd):
             return JSONResponse({"error": "circular dependency detected"}, status_code=400)
 
         for dep_id in body.depends_on:
-            await db_deps.insert(db, task_id, dep_id)
+            await db_deps.insert_with_config(db, task_id, dep_id,
+                                              pass_output=body.pass_output,
+                                              max_output_chars=body.max_output_chars)
         await db.commit()
         return {"ok": True}
     finally:
@@ -301,5 +306,53 @@ async def remove_task_dependency(task_id: str, dep_id: str):
         await db_deps.delete_one(db, task_id, dep_id)
         await db.commit()
         return {"ok": True}
+    finally:
+        await db.close()
+
+
+@router.get("/{task_id}/upstream-context")
+async def get_upstream_context(task_id: str):
+    """Preview what upstream context would be injected for this task."""
+    db = await get_db()
+    try:
+        upstream_deps = await db_deps.get_upstream_with_config(db, task_id)
+        sections = []
+        for dep in upstream_deps:
+            upstream_task_id = dep["depends_on_task_id"]
+            pass_output = dep.get("pass_output", 1)
+            max_chars = dep.get("max_output_chars", 4000)
+
+            upstream_task = await db_tasks.get_by_id(db, upstream_task_id)
+            task_title = dict(upstream_task)["title"] if upstream_task else upstream_task_id[:8]
+
+            latest_run = await db_task_runs.get_latest_successful(db, upstream_task_id)
+            result_text = ""
+            if latest_run and pass_output:
+                result_text = await db_output.get_result_text(db, latest_run["id"], max_chars)
+
+            sections.append({
+                "task_id": upstream_task_id,
+                "task_title": task_title,
+                "pass_output": bool(pass_output),
+                "max_output_chars": max_chars,
+                "has_output": bool(result_text.strip()),
+                "output_preview": result_text[:500] if result_text else "",
+                "output_length": len(result_text),
+            })
+        return {"task_id": task_id, "upstream_context": sections}
+    finally:
+        await db.close()
+
+
+@router.get("/{task_id}/xcom")
+async def get_task_xcom(task_id: str):
+    """Get xcom values for the latest run of a task."""
+    db = await get_db()
+    try:
+        latest_run = await db_task_runs.get_latest_successful(db, task_id)
+        if not latest_run:
+            return {"task_id": task_id, "xcom": []}
+        xcom_entries = await db_xcom.get_all_for_run(db, latest_run["id"])
+        return {"task_id": task_id, "run_id": latest_run["id"], "xcom": xcom_entries}
     finally:
         await db.close()

@@ -66,10 +66,23 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS task_dependencies (
                 task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
                 depends_on_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                pass_output INTEGER DEFAULT 1,
+                max_output_chars INTEGER DEFAULT 4000,
                 PRIMARY KEY (task_id, depends_on_task_id)
             );
             CREATE INDEX IF NOT EXISTS idx_task_deps_task ON task_dependencies(task_id);
             CREATE INDEX IF NOT EXISTS idx_task_deps_depends ON task_dependencies(depends_on_task_id);
+
+            CREATE TABLE IF NOT EXISTS task_xcom (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_run_id TEXT NOT NULL REFERENCES task_runs(id),
+                task_id TEXT NOT NULL REFERENCES tasks(id),
+                key TEXT NOT NULL DEFAULT 'return_value',
+                value TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(task_run_id, key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_xcom_task ON task_xcom(task_id);
 
             CREATE TABLE IF NOT EXISTS task_runs (
                 id TEXT PRIMARY KEY,
@@ -111,6 +124,14 @@ async def init_db():
             );
         """)
         await db.commit()
+
+        # Migrate existing databases: add new columns if missing
+        for col, default in [("pass_output", "1"), ("max_output_chars", "4000")]:
+            try:
+                await db.execute(f"ALTER TABLE task_dependencies ADD COLUMN {col} INTEGER DEFAULT {default}")
+                await db.commit()
+            except Exception:
+                pass  # column already exists
 
     finally:
         await db.close()

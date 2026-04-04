@@ -5,10 +5,12 @@ async def get_edges_for_nodes(db: aiosqlite.Connection,
                                node_ids: set[str]) -> list[dict]:
     placeholders = ",".join("?" for _ in node_ids)
     cursor = await db.execute(
-        f"SELECT task_id, depends_on_task_id FROM task_dependencies WHERE task_id IN ({placeholders})",
+        f"""SELECT task_id, depends_on_task_id, COALESCE(pass_output, 1) as pass_output
+            FROM task_dependencies WHERE task_id IN ({placeholders})""",
         list(node_ids),
     )
-    return [{"source": r["depends_on_task_id"], "target": r["task_id"]}
+    return [{"source": r["depends_on_task_id"], "target": r["task_id"],
+             "pass_output": bool(r["pass_output"])}
             for r in await cursor.fetchall()]
 
 
@@ -56,6 +58,29 @@ async def delete_by_flow(db: aiosqlite.Connection, flow_id: str) -> None:
            WHERE task_id IN (SELECT id FROM tasks WHERE flow_id = ?)
            OR depends_on_task_id IN (SELECT id FROM tasks WHERE flow_id = ?)""",
         (flow_id, flow_id),
+    )
+
+
+async def get_upstream_with_config(db: aiosqlite.Connection, task_id: str) -> list[dict]:
+    """Get upstream dependencies with their data-passing configuration."""
+    cursor = await db.execute(
+        """SELECT depends_on_task_id,
+                  COALESCE(pass_output, 1) as pass_output,
+                  COALESCE(max_output_chars, 4000) as max_output_chars
+           FROM task_dependencies WHERE task_id = ?""",
+        (task_id,),
+    )
+    return [dict(r) for r in await cursor.fetchall()]
+
+
+async def insert_with_config(db: aiosqlite.Connection, task_id: str,
+                              depends_on_task_id: str, pass_output: bool = True,
+                              max_output_chars: int = 4000) -> None:
+    await db.execute(
+        """INSERT OR IGNORE INTO task_dependencies
+           (task_id, depends_on_task_id, pass_output, max_output_chars)
+           VALUES (?, ?, ?, ?)""",
+        (task_id, depends_on_task_id, 1 if pass_output else 0, max_output_chars),
     )
 
 
