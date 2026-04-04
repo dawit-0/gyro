@@ -1030,6 +1030,44 @@ input, textarea, select {
   background: rgba(99, 102, 241, 0.06);
 }
 
+.sidebar-action-danger {
+  color: var(--error, #ef4444);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.sidebar-action-danger:hover {
+  border-color: var(--error, #ef4444);
+  color: var(--error, #ef4444);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.sidebar-delete-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.04);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-sm);
+}
+
+.sidebar-delete-confirm-text {
+  font-size: 0.8125rem;
+  color: var(--error, #ef4444);
+  font-weight: 500;
+}
+
+.sidebar-delete-confirm-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.sidebar-delete-confirm-actions .sidebar-action-btn {
+  flex: 1;
+  justify-content: center;
+  margin-bottom: 0;
+}
+
 /* ===== Sidebar stats grid ===== */
 .sidebar-stats {
   display: grid;

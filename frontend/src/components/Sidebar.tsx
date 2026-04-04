@@ -42,6 +42,15 @@ export default function Sidebar({
   const [newName, setNewName] = useState("");
   const [localShowForm, setLocalShowForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  async function handleDeleteFlow() {
+    if (!selectedFlow) return;
+    await api.flows.delete(selectedFlow);
+    setConfirmingDelete(false);
+    onSelectFlow(null);
+    onFlowsChange();
+  }
 
   const showForm = showNewFlowForm || localShowForm;
 
@@ -327,6 +336,35 @@ export default function Sidebar({
                   </svg>
                   Add Task to Flow
                 </button>
+                {!confirmingDelete ? (
+                  <button
+                    className="sidebar-action-btn sidebar-action-danger"
+                    onClick={() => setConfirmingDelete(true)}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path d="M3 4h10M6 4V3a1 1 0 011-1h2a1 1 0 011 1v1M5 4v9a1 1 0 001 1h4a1 1 0 001-1V4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Delete Flow
+                  </button>
+                ) : (
+                  <div className="sidebar-delete-confirm">
+                    <span className="sidebar-delete-confirm-text">Delete this flow?</span>
+                    <div className="sidebar-delete-confirm-actions">
+                      <button
+                        className="sidebar-action-btn sidebar-action-danger"
+                        onClick={handleDeleteFlow}
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        className="sidebar-action-btn"
+                        onClick={() => setConfirmingDelete(false)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Task List */}
