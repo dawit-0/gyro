@@ -8,6 +8,7 @@ import AgentList from "./components/AgentList";
 import AgentForm from "./components/AgentForm";
 import TaskFlowView from "./components/TaskFlowView";
 import FlowDashboard from "./components/FlowDashboard";
+import TaskDetailPage from "./components/TaskDetailPage";
 
 export interface TaskPrefill {
   title: string;
@@ -30,6 +31,7 @@ export default function App() {
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [taskPrefill, setTaskPrefill] = useState<Partial<TaskPrefill> | null>(null);
   const [showNewFlowForm, setShowNewFlowForm] = useState(false);
+  const [selectedTaskDetail, setSelectedTaskDetail] = useState<string | null>(null);
 
   const loadTasks = useCallback(async () => {
     const data = await api.tasks.list(selectedFlow || undefined);
@@ -179,7 +181,16 @@ export default function App() {
           onShowNewFlowForm={setShowNewFlowForm}
         />
         <main className="content">
-          {view === "agents" ? (
+          {selectedTaskDetail ? (
+            <TaskDetailPage
+              taskId={selectedTaskDetail}
+              onBack={() => setSelectedTaskDetail(null)}
+              onCancel={handleCancel}
+              onDelete={handleDelete}
+              onTrigger={handleTrigger}
+              onRetryTask={handleRetryTask}
+            />
+          ) : view === "agents" ? (
             <AgentList
               agents={agents}
               onSpawn={handleSpawnFromAgent}
@@ -199,6 +210,7 @@ export default function App() {
               onRetryTask={handleRetryTask}
               onRetryFlow={handleRetryFlow}
               onResumeFlow={handleResumeFlow}
+              onViewTaskDetail={setSelectedTaskDetail}
             />
           ) : (
             <FlowDashboard

@@ -149,6 +149,28 @@ export interface Agent {
   updated_at: string;
 }
 
+export interface DebugStatus {
+  orchestrator: {
+    running: boolean;
+    active_runs: number;
+    active_run_ids: string[];
+    max_concurrent: number;
+    poll_interval_seconds: number;
+  };
+  queued_runs: number;
+  recent_failures: Array<{
+    run_id: string;
+    task_id: string;
+    error_message: string | null;
+    finished_at: string | null;
+  }>;
+  system: {
+    python_version: string;
+    uptime_seconds: number;
+    db_size_bytes: number;
+  };
+}
+
 export const api = {
   tasks: {
     list: (flowId?: string) =>
@@ -268,6 +290,9 @@ export const api = {
         `/flows/${id}/resume`,
         { method: "POST" }
       ),
+  },
+  debug: {
+    status: () => request<DebugStatus>("/debug/status"),
   },
   agents: {
     list: () => request<Agent[]>("/agents"),

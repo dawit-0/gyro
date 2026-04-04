@@ -1,5 +1,5 @@
-import React from "react";
-import { Task } from "../api";
+import React, { useEffect, useState } from "react";
+import { api, DebugStatus, Task } from "../api";
 
 interface Props {
   tasks: Task[];
@@ -11,6 +11,23 @@ interface Props {
 }
 
 export default function Header({ tasks, view, onViewChange, onNewFlow, onNewAgent, onQuickTask }: Props) {
+  const [debugStatus, setDebugStatus] = useState<DebugStatus | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function poll() {
+      try {
+        const s = await api.debug.status();
+        if (!cancelled) setDebugStatus(s);
+      } catch {
+        if (!cancelled) setDebugStatus(null);
+      }
+    }
+    poll();
+    const interval = setInterval(poll, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
   return (
     <header className="header">
       <div className="header-left">
@@ -40,6 +57,26 @@ export default function Header({ tasks, view, onViewChange, onNewFlow, onNewAgen
           <span className="stat-badge">
             <span className="dot scheduled" /> {tasks.filter((t) => t.schedule).length} scheduled
           </span>
+        )}
+      </div>
+      <div className="header-system-status">
+        {debugStatus ? (
+          <>
+            <span className={`system-status-dot ${debugStatus.orchestrator.running ? "ok" : "down"}`} />
+            <span className="system-status-text">
+              {debugStatus.orchestrator.active_runs} active &middot; {debugStatus.queued_runs} queued
+            </span>
+            {debugStatus.recent_failures.length > 0 && (
+              <span className="system-status-warn">
+                {debugStatus.recent_failures.length} recent failure{debugStatus.recent_failures.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            <span className="system-status-dot down" />
+            <span className="system-status-text">Status unavailable</span>
+          </>
         )}
       </div>
       <div className="header-actions">

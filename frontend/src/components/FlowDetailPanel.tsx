@@ -12,6 +12,7 @@ interface Props {
   onTrigger: (id: string) => void;
   onRetryTask: (id: string) => void;
   onNodeSelect: (id: string) => void;
+  onViewDetail: (id: string) => void;
 }
 
 export default function FlowDetailPanel({
@@ -25,6 +26,7 @@ export default function FlowDetailPanel({
   onTrigger,
   onRetryTask,
   onNodeSelect,
+  onViewDetail,
 }: Props) {
   const [latestRun, setLatestRun] = useState<TaskRun | null>(null);
   const [output, setOutput] = useState<TaskRunOutput[]>([]);
@@ -181,6 +183,9 @@ export default function FlowDetailPanel({
         )}
         <button className="btn btn-sm btn-secondary" onClick={() => onDelete(node.id)}>
           Delete
+        </button>
+        <button className="btn btn-sm btn-secondary" onClick={() => onViewDetail(node.id)}>
+          More Info &rarr;
         </button>
       </div>
     </div>
