@@ -25,7 +25,7 @@ POLL_INTERVAL = 2  # seconds
 class Orchestrator:
     def __init__(self, sio):
         self.sio = sio
-        self.running_processes: dict[str, asyncio.subprocess.Process] = {}
+        self.running_providers: dict[str, "BaseProvider"] = {}  # run_id -> provider
         self._poll_task: Optional[asyncio.Task] = None
 
     async def start(self):
@@ -34,19 +34,19 @@ class Orchestrator:
     async def stop(self):
         if self._poll_task:
             self._poll_task.cancel()
-        for run_id, proc in list(self.running_processes.items()):
+        for run_id, provider in list(self.running_providers.items()):
             try:
-                proc.terminate()
-            except ProcessLookupError:
+                await provider.cancel()
+            except Exception:
                 pass
-        self.running_processes.clear()
+        self.running_providers.clear()
 
     async def _poll_loop(self):
         while True:
             try:
                 logger.debug("poll cycle: %d active runs, %d slots available",
-                             len(self.running_processes),
-                             MAX_CONCURRENT_RUNS - len(self.running_processes))
+                             len(self.running_providers),
+                             MAX_CONCURRENT_RUNS - len(self.running_providers))
                 await self._check_task_schedules()
                 await self._check_flow_schedules()
                 await self._dispatch_queued_runs()
@@ -117,13 +117,13 @@ class Orchestrator:
             await db.close()
 
     async def _dispatch_queued_runs(self):
-        if len(self.running_processes) >= MAX_CONCURRENT_RUNS:
+        if len(self.running_providers) >= MAX_CONCURRENT_RUNS:
             logger.debug("at capacity (%d running), skipping dispatch", MAX_CONCURRENT_RUNS)
             return
 
         db = await get_db()
         try:
-            slots = MAX_CONCURRENT_RUNS - len(self.running_processes)
+            slots = MAX_CONCURRENT_RUNS - len(self.running_providers)
             runs = await db_task_runs.get_queued_ready(db, slots)
 
             if runs:
@@ -146,20 +146,6 @@ class Orchestrator:
         await self.sio.emit("task_run:started", {"id": run_id, "task_id": task_id})
 
         asyncio.create_task(self._execute_run(run_id, run))
-
-    def _build_allowed_tools(self, permissions: dict) -> list[str]:
-        tools = []
-        if permissions.get("file_read", True):
-            tools.extend(["Read", "Glob", "Grep"])
-        if permissions.get("file_write", False):
-            tools.extend(["Edit", "Write"])
-        if permissions.get("bash", False):
-            tools.append("Bash")
-        if permissions.get("web_search", False):
-            tools.extend(["WebSearch", "WebFetch"])
-        if permissions.get("mcp", False):
-            tools.append("mcp__*")
-        return tools
 
     async def _emit_event(self, db, run_id: str, task_id: str, seq: int, event_data: dict):
         """Insert a lifecycle event into task_run_output and emit via Socket.IO."""
@@ -236,91 +222,53 @@ class Orchestrator:
             finally:
                 await db.close()
 
-            cmd = [
-                "claude",
-                "--print",
-                "--output-format", "stream-json",
-                "--model", model,
-            ]
+            # Select provider based on model
+            from providers import get_provider as resolve_provider
+            from providers.claude_provider import ClaudeProvider
+            from providers.openai_provider import OpenAIProvider
 
-            allowed_tools = self._build_allowed_tools(permissions)
-            if allowed_tools:
-                for tool in allowed_tools:
-                    cmd.extend(["--allowedTools", tool])
+            provider_name = resolve_provider(model)
+            if provider_name == "openai":
+                provider = OpenAIProvider()
+            else:
+                provider = ClaudeProvider()
 
-            cmd.append(prompt)
+            self.running_providers[run_id] = provider
 
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=work_dir,
-            )
-            self.running_processes[run_id] = proc
-            tlog.info("subprocess started pid=%d", proc.pid)
+            # Set PID early if the provider exposes one (after first event)
+            pid_set = False
 
-            db = await get_db()
-            try:
-                await db_task_runs.set_pid(db, run_id, proc.pid)
+            async for event in provider.execute(prompt, model, work_dir, permissions):
                 seq += 1
-                await self._emit_event(db, run_id, task_id, seq,
-                                        {"event": "subprocess_started", "pid": proc.pid})
-            finally:
-                await db.close()
 
-            # Stream stdout
-            assert proc.stdout is not None
-            buffer = ""
-            while True:
-                chunk = await proc.stdout.read(4096)
-                if not chunk:
-                    break
-                buffer += chunk.decode("utf-8", errors="replace")
-                while "\n" in buffer:
-                    line, buffer = buffer.split("\n", 1)
-                    line = line.strip()
-                    if not line:
-                        continue
-
-                    seq += 1
-                    content = line
-                    output_type = "text"
-
-                    try:
-                        parsed = json.loads(line)
-                        if isinstance(parsed, dict):
-                            output_type = parsed.get("type", "text")
-                            if "content" in parsed:
-                                content = parsed["content"]
-                            elif "result" in parsed:
-                                content = parsed["result"]
-                            else:
-                                content = line
-                    except json.JSONDecodeError:
-                        pass
-
+                # Track PID for subprocess-based providers
+                if not pid_set and provider.pid is not None:
+                    pid_set = True
+                    tlog.info("provider started pid=%d", provider.pid)
                     db = await get_db()
                     try:
-                        await db_output.insert(db, run_id, seq, output_type, content)
+                        await db_task_runs.set_pid(db, run_id, provider.pid)
                         await db.commit()
                     finally:
                         await db.close()
 
-                    await self.sio.emit("task_run:output", {
-                        "task_run_id": run_id,
-                        "task_id": task_id,
-                        "seq": seq,
-                        "type": output_type,
-                        "content": content,
-                    })
+                db = await get_db()
+                try:
+                    await db_output.insert(db, run_id, seq, event.type, event.content)
+                    await db.commit()
+                finally:
+                    await db.close()
 
-            await proc.wait()
-            exit_code = proc.returncode
+                await self.sio.emit("task_run:output", {
+                    "task_run_id": run_id,
+                    "task_id": task_id,
+                    "seq": seq,
+                    "type": event.type,
+                    "content": event.content,
+                })
 
-            stderr_data = ""
-            if proc.stderr:
-                stderr_bytes = await proc.stderr.read()
-                stderr_data = stderr_bytes.decode("utf-8", errors="replace").strip()
+            exit_code = getattr(provider, "exit_code", 1)
+            stderr_data = getattr(provider, "stderr_data", "")
 
             elapsed = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
             status = "success" if exit_code == 0 else "failed"
@@ -388,7 +336,7 @@ class Orchestrator:
             })
             await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "failed"})
         finally:
-            self.running_processes.pop(run_id, None)
+            self.running_providers.pop(run_id, None)
 
     async def _maybe_auto_retry(self, db: aiosqlite.Connection, failed_run_id: str, task_id: str) -> bool:
         """Check if the failed run should be auto-retried. Returns True if a retry was queued."""
@@ -532,16 +480,16 @@ class Orchestrator:
 
             if run:
                 run_id = run["id"]
-                proc = self.running_processes.get(run_id)
-                if proc:
-                    logger.info("cancelling task=%s run=%s pid=%s", task_id, run_id, proc.pid)
+                provider = self.running_providers.get(run_id)
+                if provider:
+                    logger.info("cancelling task=%s run=%s pid=%s", task_id, run_id, provider.pid)
                     try:
-                        proc.terminate()
-                    except ProcessLookupError:
+                        await provider.cancel()
+                    except Exception:
                         pass
-                    self.running_processes.pop(run_id, None)
+                    self.running_providers.pop(run_id, None)
                 else:
-                    logger.info("cancelling task=%s run=%s (no active process)", task_id, run_id)
+                    logger.info("cancelling task=%s run=%s (no active provider)", task_id, run_id)
 
                 await db_task_runs.cancel(db, run_id)
                 await self._cascade_cancel_downstream(db, task_id)

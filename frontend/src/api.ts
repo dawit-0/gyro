@@ -160,6 +160,12 @@ export interface Agent {
   updated_at: string;
 }
 
+export interface Model {
+  value: string;
+  label: string;
+  provider: string;
+}
+
 export interface DebugStatus {
   orchestrator: {
     running: boolean;
@@ -311,6 +317,9 @@ export const api = {
   },
   debug: {
     status: () => request<DebugStatus>("/debug/status"),
+  },
+  models: {
+    list: () => request<Model[]>("/models"),
   },
   agents: {
     list: () => request<Agent[]>("/agents"),
