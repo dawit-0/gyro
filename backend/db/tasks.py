@@ -1,8 +1,10 @@
+from typing import Optional
+
 import aiosqlite
 
 
-async def list_all(db: aiosqlite.Connection, flow_id: str | None = None,
-                   status: str | None = None) -> list[aiosqlite.Row]:
+async def list_all(db: aiosqlite.Connection, flow_id: Optional[str] = None,
+                   status: Optional[str] = None) -> list[aiosqlite.Row]:
     query = "SELECT * FROM tasks WHERE 1=1"
     params = []
     if flow_id:
@@ -16,7 +18,7 @@ async def list_all(db: aiosqlite.Connection, flow_id: str | None = None,
     return await cursor.fetchall()
 
 
-async def get_by_id(db: aiosqlite.Connection, task_id: str) -> aiosqlite.Row | None:
+async def get_by_id(db: aiosqlite.Connection, task_id: str) -> Optional[aiosqlite.Row]:
     cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
     return await cursor.fetchone()
 
@@ -28,8 +30,8 @@ async def exists(db: aiosqlite.Connection, task_id: str) -> bool:
 
 async def insert(db: aiosqlite.Connection, task_id: str, title: str, prompt: str,
                  model: str, priority: int, work_dir: str, flow_id: str,
-                 agent_id: str | None, permissions_json: str,
-                 schedule: str | None, next_run_at: str | None,
+                 agent_id: Optional[str], permissions_json: str,
+                 schedule: Optional[str], next_run_at: Optional[str],
                  max_retries: int, retry_delay_seconds: int) -> None:
     await db.execute(
         """INSERT INTO tasks (id, title, prompt, model, priority, work_dir, flow_id,
@@ -44,8 +46,8 @@ async def insert(db: aiosqlite.Connection, task_id: str, title: str, prompt: str
 
 async def insert_quick(db: aiosqlite.Connection, task_id: str, title: str,
                         prompt: str, model: str, work_dir: str, flow_id: str,
-                        permissions_json: str, schedule: str | None,
-                        next_run_at: str | None, max_retries: int,
+                        permissions_json: str, schedule: Optional[str],
+                        next_run_at: Optional[str], max_retries: int,
                         retry_delay_seconds: int) -> None:
     await db.execute(
         """INSERT INTO tasks (id, title, prompt, model, work_dir, flow_id,
@@ -86,7 +88,7 @@ async def delete_by_flow(db: aiosqlite.Connection, flow_id: str) -> None:
 
 
 async def get_dag_nodes(db: aiosqlite.Connection,
-                         flow_id: str | None = None) -> list[dict]:
+                         flow_id: Optional[str] = None) -> list[dict]:
     if flow_id:
         cursor = await db.execute(
             """SELECT t.id, t.title, t.status, t.model, t.schedule, t.max_retries, t.retry_delay_seconds,
@@ -159,7 +161,7 @@ async def get_root_tasks_alt(db: aiosqlite.Connection, flow_id: str) -> list[dic
     return [dict(r) for r in await cursor.fetchall()]
 
 
-async def get_retry_config(db: aiosqlite.Connection, task_id: str) -> aiosqlite.Row | None:
+async def get_retry_config(db: aiosqlite.Connection, task_id: str) -> Optional[aiosqlite.Row]:
     cursor = await db.execute(
         "SELECT max_retries, retry_delay_seconds FROM tasks WHERE id = ?", (task_id,)
     )

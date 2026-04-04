@@ -1,3 +1,5 @@
+from typing import Optional
+
 import aiosqlite
 
 
@@ -8,15 +10,15 @@ async def list_active(db: aiosqlite.Connection) -> list[dict]:
     return [dict(r) for r in await cursor.fetchall()]
 
 
-async def get_by_id(db: aiosqlite.Connection, flow_id: str) -> dict | None:
+async def get_by_id(db: aiosqlite.Connection, flow_id: str) -> Optional[dict]:
     cursor = await db.execute("SELECT * FROM flows WHERE id = ?", (flow_id,))
     row = await cursor.fetchone()
     return dict(row) if row else None
 
 
 async def insert(db: aiosqlite.Connection, flow_id: str, name: str,
-                 description: str = "", schedule: str | None = None,
-                 next_run_at: str | None = None) -> None:
+                 description: str = "", schedule: Optional[str] = None,
+                 next_run_at: Optional[str] = None) -> None:
     await db.execute(
         "INSERT INTO flows (id, name, description, schedule, next_run_at) VALUES (?, ?, ?, ?, ?)",
         (flow_id, name, description, schedule, next_run_at),

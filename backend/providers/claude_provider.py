@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 from .base import BaseProvider, ProviderEvent
 
@@ -27,8 +27,8 @@ class ClaudeProvider(BaseProvider):
     """Execute a prompt via the ``claude`` CLI subprocess."""
 
     def __init__(self) -> None:
-        self.proc: asyncio.subprocess.Process | None = None
-        self.pid: int | None = None
+        self.proc: Optional[asyncio.subprocess.Process] = None
+        self.pid: Optional[int] = None
 
     async def execute(
         self,

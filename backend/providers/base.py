@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 
 @dataclass
@@ -23,7 +23,7 @@ class ProviderEvent:
 class BaseProvider(ABC):
     """Interface that every execution provider must implement."""
 
-    pid: int | None = None  # Only set for subprocess-based providers
+    pid: Optional[int] = None  # Only set for subprocess-based providers
 
     @abstractmethod
     async def execute(

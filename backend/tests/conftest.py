@@ -15,7 +15,9 @@ _TEST_DB_URI = "file:test_db?mode=memory&cache=shared"
 
 # Keep one connection alive for the duration of the session so the
 # shared in-memory database is not garbage-collected between calls.
-_keeper_conn: aiosqlite.Connection | None = None
+from typing import Optional
+
+_keeper_conn: Optional[aiosqlite.Connection] = None
 
 
 async def _get_test_db() -> aiosqlite.Connection:

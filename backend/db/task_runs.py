@@ -1,7 +1,9 @@
+from typing import Optional
+
 import aiosqlite
 
 
-async def get_by_id(db: aiosqlite.Connection, run_id: str) -> aiosqlite.Row | None:
+async def get_by_id(db: aiosqlite.Connection, run_id: str) -> Optional[aiosqlite.Row]:
     cursor = await db.execute("SELECT * FROM task_runs WHERE id = ?", (run_id,))
     return await cursor.fetchone()
 
@@ -15,7 +17,7 @@ async def list_by_task(db: aiosqlite.Connection, task_id: str,
     return await cursor.fetchall()
 
 
-async def list_all(db: aiosqlite.Connection, task_id: str | None = None) -> list[aiosqlite.Row]:
+async def list_all(db: aiosqlite.Connection, task_id: Optional[str] = None) -> list[aiosqlite.Row]:
     if task_id:
         cursor = await db.execute(
             "SELECT * FROM task_runs WHERE task_id = ? ORDER BY started_at DESC",
@@ -26,7 +28,7 @@ async def list_all(db: aiosqlite.Connection, task_id: str | None = None) -> list
     return await cursor.fetchall()
 
 
-async def get_latest(db: aiosqlite.Connection, task_id: str) -> aiosqlite.Row | None:
+async def get_latest(db: aiosqlite.Connection, task_id: str) -> Optional[aiosqlite.Row]:
     cursor = await db.execute(
         "SELECT * FROM task_runs WHERE task_id = ? ORDER BY run_number DESC LIMIT 1",
         (task_id,),
@@ -46,7 +48,7 @@ async def next_run_number(db: aiosqlite.Connection, task_id: str) -> int:
 async def insert(db: aiosqlite.Connection, run_id: str, task_id: str,
                   run_number: int, trigger: str = "manual",
                   status: str = "queued", attempt_number: int = 1,
-                  retry_of_run_id: str | None = None) -> None:
+                  retry_of_run_id: Optional[str] = None) -> None:
     await db.execute(
         """INSERT INTO task_runs (id, task_id, run_number, trigger, status, attempt_number, retry_of_run_id)
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
@@ -69,9 +71,9 @@ async def set_pid(db: aiosqlite.Connection, run_id: str, pid: int) -> None:
 
 
 async def set_finished(db: aiosqlite.Connection, run_id: str, status: str,
-                         exit_code: int | None = None, duration_ms: int = 0,
+                         exit_code: Optional[int] = None, duration_ms: int = 0,
                          num_turns: int = 0,
-                         error_message: str | None = None) -> None:
+                         error_message: Optional[str] = None) -> None:
     await db.execute(
         """UPDATE task_runs SET status = ?, exit_code = ?, duration_ms = ?,
            num_turns = ?, finished_at = datetime('now'), error_message = ?
@@ -127,7 +129,7 @@ async def get_active_by_flow(db: aiosqlite.Connection, flow_id: str) -> list[dic
     return [dict(r) for r in await cursor.fetchall()]
 
 
-async def get_attempt_number(db: aiosqlite.Connection, run_id: str) -> aiosqlite.Row | None:
+async def get_attempt_number(db: aiosqlite.Connection, run_id: str) -> Optional[aiosqlite.Row]:
     cursor = await db.execute(
         "SELECT attempt_number FROM task_runs WHERE id = ?", (run_id,)
     )
@@ -159,7 +161,7 @@ async def get_queued_ready(db: aiosqlite.Connection, limit: int) -> list[dict]:
     return [dict(r) for r in await cursor.fetchall()]
 
 
-async def get_latest_successful(db: aiosqlite.Connection, task_id: str) -> aiosqlite.Row | None:
+async def get_latest_successful(db: aiosqlite.Connection, task_id: str) -> Optional[aiosqlite.Row]:
     cursor = await db.execute(
         """SELECT * FROM task_runs WHERE task_id = ? AND status = 'success'
            ORDER BY run_number DESC LIMIT 1""",
@@ -168,7 +170,7 @@ async def get_latest_successful(db: aiosqlite.Connection, task_id: str) -> aiosq
     return await cursor.fetchone()
 
 
-async def get_active_run(db: aiosqlite.Connection, task_id: str) -> aiosqlite.Row | None:
+async def get_active_run(db: aiosqlite.Connection, task_id: str) -> Optional[aiosqlite.Row]:
     cursor = await db.execute(
         "SELECT id FROM task_runs WHERE task_id = ? AND status IN ('running', 'queued') ORDER BY run_number DESC LIMIT 1",
         (task_id,),

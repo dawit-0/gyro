@@ -1,3 +1,5 @@
+from typing import Optional
+
 import aiosqlite
 
 
@@ -11,7 +13,7 @@ async def insert(db: aiosqlite.Connection, task_run_id: str, task_id: str,
 
 
 async def get_latest_for_task(db: aiosqlite.Connection, task_id: str,
-                               key: str = "return_value") -> aiosqlite.Row | None:
+                               key: str = "return_value") -> Optional[aiosqlite.Row]:
     cursor = await db.execute(
         """SELECT x.* FROM task_xcom x
            JOIN task_runs tr ON tr.id = x.task_run_id

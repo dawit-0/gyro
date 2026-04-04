@@ -2,7 +2,7 @@
 
 import json
 import os
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 from .base import BaseProvider, ProviderEvent
 
@@ -11,7 +11,7 @@ class OpenAIProvider(BaseProvider):
     """Execute a prompt via the OpenAI Responses API with streaming."""
 
     def __init__(self) -> None:
-        self.pid: int | None = None  # No subprocess
+        self.pid: Optional[int] = None  # No subprocess
         self.stream = None
         self.exit_code: int = 0
         self.stderr_data: str = ""
