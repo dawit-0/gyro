@@ -9,6 +9,8 @@ import aiosqlite
 
 import cron as cron_parser
 from database import get_db
+from db import tasks as db_tasks, task_runs as db_task_runs, flows as db_flows
+from db import task_run_output as db_output, task_dependencies as db_deps
 from models import DEFAULT_PERMISSIONS
 
 MAX_CONCURRENT_RUNS = 5
@@ -50,41 +52,21 @@ class Orchestrator:
         now_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
         db = await get_db()
         try:
-            cursor = await db.execute(
-                """SELECT * FROM tasks
-                   WHERE status = 'active' AND schedule IS NOT NULL
-                   AND schedule_enabled = 1 AND next_run_at IS NOT NULL
-                   AND next_run_at <= ?""",
-                (now_str,),
-            )
-            tasks = await cursor.fetchall()
+            tasks = await db_tasks.get_due_scheduled(db, now_str)
 
             for task in tasks:
-                task = dict(task)
                 task_id = task["id"]
-
-                # Get next run number
-                cursor = await db.execute(
-                    "SELECT COALESCE(MAX(run_number), 0) + 1 FROM task_runs WHERE task_id = ?",
-                    (task_id,),
-                )
-                run_number = (await cursor.fetchone())[0]
+                run_number = await db_task_runs.next_run_number(db, task_id)
                 run_id = str(uuid.uuid4())
 
-                await db.execute(
-                    """INSERT INTO task_runs (id, task_id, run_number, trigger, status)
-                       VALUES (?, ?, ?, 'schedule', 'queued')""",
-                    (run_id, task_id, run_number),
-                )
+                await db_task_runs.insert(db, run_id, task_id, run_number,
+                                          trigger="schedule")
 
                 # Advance next_run_at
                 next_run = cron_parser.next_run_after(task["schedule"], now)
                 next_run_str = next_run.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-                await db.execute(
-                    "UPDATE tasks SET last_run_at = ?, next_run_at = ?, updated_at = datetime('now') WHERE id = ?",
-                    (now_str, next_run_str, task_id),
-                )
+                await db_tasks.update_schedule_times(db, task_id, now_str, next_run_str)
                 await db.commit()
 
                 await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "queued"})
@@ -98,44 +80,20 @@ class Orchestrator:
         now_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
         db = await get_db()
         try:
-            cursor = await db.execute(
-                """SELECT * FROM flows
-                   WHERE archived = 0 AND schedule IS NOT NULL
-                   AND schedule_enabled = 1 AND next_run_at IS NOT NULL
-                   AND next_run_at <= ?""",
-                (now_str,),
-            )
-            flows = await cursor.fetchall()
+            flows = await db_flows.get_due_scheduled(db, now_str)
 
             for flow in flows:
-                flow = dict(flow)
                 flow_id = flow["id"]
 
-                # Find root tasks (no upstream deps) in this flow
-                cursor = await db.execute(
-                    """SELECT id FROM tasks
-                       WHERE flow_id = ? AND status = 'active'
-                       AND NOT EXISTS (
-                           SELECT 1 FROM task_dependencies td WHERE td.task_id = tasks.id
-                       )""",
-                    (flow_id,),
-                )
-                root_tasks = await cursor.fetchall()
+                root_tasks = await db_tasks.get_root_tasks_alt(db, flow_id)
 
                 for task_row in root_tasks:
                     task_id = task_row["id"]
-                    cursor = await db.execute(
-                        "SELECT COALESCE(MAX(run_number), 0) + 1 FROM task_runs WHERE task_id = ?",
-                        (task_id,),
-                    )
-                    run_number = (await cursor.fetchone())[0]
+                    run_number = await db_task_runs.next_run_number(db, task_id)
                     run_id = str(uuid.uuid4())
 
-                    await db.execute(
-                        """INSERT INTO task_runs (id, task_id, run_number, trigger, status)
-                           VALUES (?, ?, ?, 'schedule', 'queued')""",
-                        (run_id, task_id, run_number),
-                    )
+                    await db_task_runs.insert(db, run_id, task_id, run_number,
+                                              trigger="schedule")
 
                     await self.sio.emit("task_run:started", {"id": run_id, "task_id": task_id, "trigger": "schedule"})
 
@@ -143,10 +101,7 @@ class Orchestrator:
                 next_run = cron_parser.next_run_after(flow["schedule"], now)
                 next_run_str = next_run.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-                await db.execute(
-                    "UPDATE flows SET last_run_at = ?, next_run_at = ? WHERE id = ?",
-                    (now_str, next_run_str, flow_id),
-                )
+                await db_flows.update_schedule_times(db, flow_id, now_str, next_run_str)
                 await db.commit()
         finally:
             await db.close()
@@ -158,33 +113,10 @@ class Orchestrator:
         db = await get_db()
         try:
             slots = MAX_CONCURRENT_RUNS - len(self.running_processes)
-            # Find queued runs where:
-            # - task is active
-            # - all upstream dependencies have a latest run with 'success' status (or no deps)
-            cursor = await db.execute(
-                """SELECT tr.*, t.prompt, t.model, t.work_dir, t.permissions, t.priority
-                   FROM task_runs tr
-                   JOIN tasks t ON t.id = tr.task_id
-                   WHERE tr.status = 'queued' AND t.status = 'active'
-                   AND NOT EXISTS (
-                       SELECT 1 FROM task_dependencies td
-                       WHERE td.task_id = tr.task_id
-                       AND NOT EXISTS (
-                           SELECT 1 FROM task_runs dep_run
-                           WHERE dep_run.task_id = td.depends_on_task_id
-                           AND dep_run.status = 'success'
-                           AND dep_run.run_number = (
-                               SELECT MAX(run_number) FROM task_runs WHERE task_id = td.depends_on_task_id
-                           )
-                       )
-                   )
-                   ORDER BY t.priority DESC, tr.started_at ASC LIMIT ?""",
-                (slots,),
-            )
-            runs = await cursor.fetchall()
+            runs = await db_task_runs.get_queued_ready(db, slots)
 
             for run in runs:
-                await self._start_run(db, dict(run))
+                await self._start_run(db, run)
         finally:
             await db.close()
 
@@ -192,10 +124,7 @@ class Orchestrator:
         run_id = run["id"]
         task_id = run["task_id"]
 
-        await db.execute(
-            "UPDATE task_runs SET status = 'running', started_at = datetime('now') WHERE id = ?",
-            (run_id,),
-        )
+        await db_task_runs.set_running(db, run_id)
         await db.commit()
 
         await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "running"})
@@ -255,10 +184,7 @@ class Orchestrator:
 
             db = await get_db()
             try:
-                await db.execute(
-                    "UPDATE task_runs SET pid = ? WHERE id = ?",
-                    (proc.pid, run_id),
-                )
+                await db_task_runs.set_pid(db, run_id, proc.pid)
                 await db.commit()
             finally:
                 await db.close()
@@ -296,10 +222,7 @@ class Orchestrator:
 
                     db = await get_db()
                     try:
-                        await db.execute(
-                            "INSERT INTO task_run_output (task_run_id, seq, type, content) VALUES (?, ?, ?, ?)",
-                            (run_id, seq, output_type, content),
-                        )
+                        await db_output.insert(db, run_id, seq, output_type, content)
                         await db.commit()
                     finally:
                         await db.close()
@@ -325,12 +248,11 @@ class Orchestrator:
 
             db = await get_db()
             try:
-                await db.execute(
-                    """UPDATE task_runs SET status = ?, exit_code = ?, duration_ms = ?,
-                       num_turns = ?, finished_at = datetime('now'), error_message = ?
-                       WHERE id = ?""",
-                    (status, exit_code, elapsed, seq, stderr_data or None, run_id),
-                )
+                await db_task_runs.set_finished(db, run_id, status,
+                                                 exit_code=exit_code,
+                                                 duration_ms=elapsed,
+                                                 num_turns=seq,
+                                                 error_message=stderr_data or None)
 
                 if status == "success":
                     await self._cascade_trigger_downstream(db, task_id)
@@ -357,11 +279,7 @@ class Orchestrator:
             elapsed = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
             db = await get_db()
             try:
-                await db.execute(
-                    """UPDATE task_runs SET status = 'failed', duration_ms = ?,
-                       finished_at = datetime('now'), error_message = ? WHERE id = ?""",
-                    (elapsed, str(e), run_id),
-                )
+                await db_task_runs.set_failed(db, run_id, elapsed, str(e))
                 retried = await self._maybe_auto_retry(db, run_id, task_id)
                 if not retried:
                     await self._cascade_cancel_downstream(db, task_id)
@@ -381,19 +299,11 @@ class Orchestrator:
 
     async def _maybe_auto_retry(self, db: aiosqlite.Connection, failed_run_id: str, task_id: str) -> bool:
         """Check if the failed run should be auto-retried. Returns True if a retry was queued."""
-        # Get task retry config
-        cursor = await db.execute(
-            "SELECT max_retries, retry_delay_seconds FROM tasks WHERE id = ?", (task_id,)
-        )
-        task = await cursor.fetchone()
+        task = await db_tasks.get_retry_config(db, task_id)
         if not task or not task["max_retries"] or task["max_retries"] <= 0:
             return False
 
-        # Get the current attempt number of the failed run
-        cursor = await db.execute(
-            "SELECT attempt_number FROM task_runs WHERE id = ?", (failed_run_id,)
-        )
-        run = await cursor.fetchone()
+        run = await db_task_runs.get_attempt_number(db, failed_run_id)
         attempt = run["attempt_number"] if run and run["attempt_number"] else 1
 
         if attempt >= task["max_retries"]:
@@ -409,18 +319,12 @@ class Orchestrator:
         await asyncio.sleep(delay)
         db = await get_db()
         try:
-            cursor = await db.execute(
-                "SELECT COALESCE(MAX(run_number), 0) + 1 FROM task_runs WHERE task_id = ?",
-                (task_id,),
-            )
-            run_number = (await cursor.fetchone())[0]
+            run_number = await db_task_runs.next_run_number(db, task_id)
             run_id = str(uuid.uuid4())
 
-            await db.execute(
-                """INSERT INTO task_runs (id, task_id, run_number, trigger, status, attempt_number, retry_of_run_id)
-                   VALUES (?, ?, ?, 'retry', 'queued', ?, ?)""",
-                (run_id, task_id, run_number, attempt, failed_run_id),
-            )
+            await db_task_runs.insert(db, run_id, task_id, run_number,
+                                      trigger="retry", attempt_number=attempt,
+                                      retry_of_run_id=failed_run_id)
             await db.commit()
 
             await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "queued"})
@@ -432,28 +336,16 @@ class Orchestrator:
         """Manually retry the latest failed run for a task, then cascade downstream."""
         db = await get_db()
         try:
-            # Get the latest failed run
-            cursor = await db.execute(
-                "SELECT * FROM task_runs WHERE task_id = ? ORDER BY run_number DESC LIMIT 1",
-                (task_id,),
-            )
-            last_run = await cursor.fetchone()
-
-            cursor = await db.execute(
-                "SELECT COALESCE(MAX(run_number), 0) + 1 FROM task_runs WHERE task_id = ?",
-                (task_id,),
-            )
-            run_number = (await cursor.fetchone())[0]
+            last_run = await db_task_runs.get_latest(db, task_id)
+            run_number = await db_task_runs.next_run_number(db, task_id)
             run_id = str(uuid.uuid4())
 
             retry_of = last_run["id"] if last_run else None
             attempt = (last_run["attempt_number"] + 1) if last_run and last_run["attempt_number"] else 1
 
-            await db.execute(
-                """INSERT INTO task_runs (id, task_id, run_number, trigger, status, attempt_number, retry_of_run_id)
-                   VALUES (?, ?, ?, 'retry', 'queued', ?, ?)""",
-                (run_id, task_id, run_number, attempt, retry_of),
-            )
+            await db_task_runs.insert(db, run_id, task_id, run_number,
+                                      trigger="retry", attempt_number=attempt,
+                                      retry_of_run_id=retry_of)
             await db.commit()
 
             await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "queued"})
@@ -465,49 +357,20 @@ class Orchestrator:
         """Resume a flow by retrying all failed/cancelled leaf tasks (tasks whose failure stopped the flow)."""
         db = await get_db()
         try:
-            # Find all tasks in this flow whose latest run is failed or cancelled
-            cursor = await db.execute(
-                """SELECT t.id FROM tasks t
-                   JOIN task_runs tr ON tr.task_id = t.id AND tr.run_number = (
-                       SELECT MAX(run_number) FROM task_runs WHERE task_id = t.id
-                   )
-                   WHERE t.flow_id = ? AND t.status = 'active'
-                   AND tr.status IN ('failed', 'cancelled')
-                   AND NOT EXISTS (
-                       SELECT 1 FROM task_dependencies td
-                       JOIN task_runs dep_run ON dep_run.task_id = td.depends_on_task_id
-                       AND dep_run.run_number = (
-                           SELECT MAX(run_number) FROM task_runs WHERE task_id = td.depends_on_task_id
-                       )
-                       WHERE td.task_id = t.id AND dep_run.status IN ('failed', 'cancelled')
-                   )""",
-                (flow_id,),
-            )
-            tasks_to_retry = await cursor.fetchall()
+            tasks_to_retry = await db_tasks.get_resumable_failed_tasks(db, flow_id)
             created_runs = []
 
             for task_row in tasks_to_retry:
                 task_id = task_row["id"]
-                cursor = await db.execute(
-                    "SELECT * FROM task_runs WHERE task_id = ? ORDER BY run_number DESC LIMIT 1",
-                    (task_id,),
-                )
-                last_run = await cursor.fetchone()
-
-                cursor = await db.execute(
-                    "SELECT COALESCE(MAX(run_number), 0) + 1 FROM task_runs WHERE task_id = ?",
-                    (task_id,),
-                )
-                run_number = (await cursor.fetchone())[0]
+                last_run = await db_task_runs.get_latest(db, task_id)
+                run_number = await db_task_runs.next_run_number(db, task_id)
                 run_id = str(uuid.uuid4())
 
                 retry_of = last_run["id"] if last_run else None
 
-                await db.execute(
-                    """INSERT INTO task_runs (id, task_id, run_number, trigger, status, attempt_number, retry_of_run_id)
-                       VALUES (?, ?, ?, 'retry', 'queued', 1, ?)""",
-                    (run_id, task_id, run_number, retry_of),
-                )
+                await db_task_runs.insert(db, run_id, task_id, run_number,
+                                          trigger="retry",
+                                          retry_of_run_id=retry_of)
                 created_runs.append({"id": run_id, "task_id": task_id, "run_number": run_number})
                 await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "queued"})
 
@@ -518,82 +381,42 @@ class Orchestrator:
 
     async def _cascade_trigger_downstream(self, db: aiosqlite.Connection, completed_task_id: str):
         """When a task run succeeds, check downstream tasks and queue runs if all deps are met."""
-        cursor = await db.execute(
-            "SELECT DISTINCT task_id FROM task_dependencies WHERE depends_on_task_id = ?",
-            (completed_task_id,),
-        )
-        downstream_tasks = await cursor.fetchall()
+        downstream_tasks = await db_deps.get_downstream(db, completed_task_id)
 
         for row in downstream_tasks:
             downstream_id = row["task_id"]
 
             # Check task is active
-            cursor = await db.execute(
-                "SELECT status FROM tasks WHERE id = ?", (downstream_id,)
-            )
-            task = await cursor.fetchone()
-            if not task or task["status"] != "active":
+            task = await db_tasks.get_by_id(db, downstream_id)
+            if not task or dict(task).get("status") != "active":
                 continue
 
             # Check all upstream deps have a successful latest run
-            cursor = await db.execute(
-                """SELECT td.depends_on_task_id FROM task_dependencies td
-                   WHERE td.task_id = ?
-                   AND NOT EXISTS (
-                       SELECT 1 FROM task_runs tr
-                       WHERE tr.task_id = td.depends_on_task_id
-                       AND tr.status = 'success'
-                       AND tr.run_number = (
-                           SELECT MAX(run_number) FROM task_runs WHERE task_id = td.depends_on_task_id
-                       )
-                   )""",
-                (downstream_id,),
-            )
-            unmet_deps = await cursor.fetchall()
+            unmet_deps = await db_deps.get_unmet_upstream(db, downstream_id)
             if unmet_deps:
                 continue
 
             # Check no queued/running run already exists for this task
-            cursor = await db.execute(
-                "SELECT id FROM task_runs WHERE task_id = ? AND status IN ('queued', 'running')",
-                (downstream_id,),
-            )
-            if await cursor.fetchone():
+            if await db_task_runs.has_active_run(db, downstream_id):
                 continue
 
             # All deps met — create a queued run
-            cursor = await db.execute(
-                "SELECT COALESCE(MAX(run_number), 0) + 1 FROM task_runs WHERE task_id = ?",
-                (downstream_id,),
-            )
-            run_number = (await cursor.fetchone())[0]
+            run_number = await db_task_runs.next_run_number(db, downstream_id)
             run_id = str(uuid.uuid4())
 
-            await db.execute(
-                """INSERT INTO task_runs (id, task_id, run_number, trigger, status)
-                   VALUES (?, ?, ?, 'dependency', 'queued')""",
-                (run_id, downstream_id, run_number),
-            )
+            await db_task_runs.insert(db, run_id, downstream_id, run_number,
+                                      trigger="dependency")
 
             await self.sio.emit("task:updated", {"id": downstream_id, "latest_run_status": "queued"})
 
     async def _cascade_cancel_downstream(self, db: aiosqlite.Connection, failed_task_id: str):
         """Recursively cancel queued downstream runs when a task fails."""
-        cursor = await db.execute(
-            """SELECT DISTINCT tr.id, tr.task_id FROM task_runs tr
-               JOIN task_dependencies td ON td.task_id = tr.task_id
-               WHERE td.depends_on_task_id = ? AND tr.status = 'queued'""",
-            (failed_task_id,),
-        )
-        queued_runs = await cursor.fetchall()
+        queued_runs = await db_deps.get_queued_downstream(db, failed_task_id)
 
         for row in queued_runs:
             run_id = row["id"]
             task_id = row["task_id"]
-            await db.execute(
-                "UPDATE task_runs SET status = 'cancelled', finished_at = datetime('now') WHERE id = ?",
-                (run_id,),
-            )
+            await db_task_runs.cancel(db, run_id)
             await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "cancelled"})
             await self.sio.emit("task_run:finished", {"id": run_id, "task_id": task_id, "status": "cancelled"})
             # Recurse
@@ -603,11 +426,7 @@ class Orchestrator:
         """Cancel the latest running/queued run for a task."""
         db = await get_db()
         try:
-            cursor = await db.execute(
-                "SELECT id FROM task_runs WHERE task_id = ? AND status IN ('running', 'queued') ORDER BY run_number DESC LIMIT 1",
-                (task_id,),
-            )
-            run = await cursor.fetchone()
+            run = await db_task_runs.get_active_run(db, task_id)
 
             if run:
                 run_id = run["id"]
@@ -619,10 +438,7 @@ class Orchestrator:
                         pass
                     self.running_processes.pop(run_id, None)
 
-                await db.execute(
-                    "UPDATE task_runs SET status = 'cancelled', finished_at = datetime('now') WHERE id = ?",
-                    (run_id,),
-                )
+                await db_task_runs.cancel(db, run_id)
                 await self._cascade_cancel_downstream(db, task_id)
                 await db.commit()
 

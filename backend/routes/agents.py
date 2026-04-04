@@ -2,6 +2,8 @@ import json
 import uuid
 from fastapi import APIRouter
 from database import get_db
+from db import agents as db_agents, flows as db_flows, tasks as db_tasks
+from db import task_runs as db_task_runs, task_dependencies as db_deps
 from models import AgentCreate, AgentUpdate, SpawnTask, DEFAULT_PERMISSIONS
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -37,8 +39,7 @@ def _format_context(context: list[dict]) -> str:
 async def list_agents():
     db = await get_db()
     try:
-        cursor = await db.execute("SELECT * FROM agents ORDER BY created_at DESC")
-        rows = await cursor.fetchall()
+        rows = await db_agents.list_all(db)
         return [_parse_agent_row(r) for r in rows]
     finally:
         await db.close()
@@ -48,8 +49,7 @@ async def list_agents():
 async def get_agent(agent_id: str):
     db = await get_db()
     try:
-        cursor = await db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,))
-        row = await cursor.fetchone()
+        row = await db_agents.get_by_id(db, agent_id)
         if not row:
             return {"error": "not found"}, 404
         return _parse_agent_row(row)
@@ -63,24 +63,14 @@ async def create_agent(body: AgentCreate):
     permissions = body.default_permissions if body.default_permissions else {}
     db = await get_db()
     try:
-        await db.execute(
-            """INSERT INTO agents (id, name, description, instructions, context, default_model, default_permissions, default_work_dir, default_flow_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                agent_id,
-                body.name,
-                body.description,
-                body.instructions,
-                json.dumps(body.context),
-                body.default_model,
-                json.dumps(permissions),
-                body.default_work_dir,
-                body.default_flow_id,
-            ),
+        await db_agents.insert(
+            db, agent_id, body.name, body.description, body.instructions,
+            json.dumps(body.context), body.default_model,
+            json.dumps(permissions), body.default_work_dir, body.default_flow_id,
         )
         await db.commit()
-        cursor = await db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,))
-        return _parse_agent_row(await cursor.fetchone())
+        row = await db_agents.get_by_id(db, agent_id)
+        return _parse_agent_row(row)
     finally:
         await db.close()
 
@@ -99,15 +89,10 @@ async def update_agent(agent_id: str, body: AgentUpdate):
                 params.append(value)
         if not updates:
             return {"error": "no fields to update"}
-        updates.append("updated_at = datetime('now')")
-        params.append(agent_id)
-        await db.execute(
-            f"UPDATE agents SET {', '.join(updates)} WHERE id = ?",
-            params,
-        )
+        await db_agents.update_fields(db, agent_id, updates, params)
         await db.commit()
-        cursor = await db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,))
-        return _parse_agent_row(await cursor.fetchone())
+        row = await db_agents.get_by_id(db, agent_id)
+        return _parse_agent_row(row)
     finally:
         await db.close()
 
@@ -116,7 +101,7 @@ async def update_agent(agent_id: str, body: AgentUpdate):
 async def delete_agent(agent_id: str):
     db = await get_db()
     try:
-        await db.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
+        await db_agents.delete(db, agent_id)
         await db.commit()
         return {"ok": True}
     finally:
@@ -127,8 +112,7 @@ async def delete_agent(agent_id: str):
 async def spawn_task(agent_id: str, body: SpawnTask):
     db = await get_db()
     try:
-        cursor = await db.execute("SELECT * FROM agents WHERE id = ?", (agent_id,))
-        row = await cursor.fetchone()
+        row = await db_agents.get_by_id(db, agent_id)
         if not row:
             return {"error": "agent not found"}, 404
         agent = _parse_agent_row(row)
@@ -153,43 +137,31 @@ async def spawn_task(agent_id: str, body: SpawnTask):
         # Auto-create a flow if none provided
         if not flow_id:
             flow_id = str(uuid.uuid4())
-            await db.execute(
-                "INSERT INTO flows (id, name) VALUES (?, ?)",
-                (flow_id, body.title),
-            )
+            await db_flows.insert(db, flow_id, body.title)
 
         task_id = str(uuid.uuid4())
         permissions_json = json.dumps(permissions)
 
-        await db.execute(
-            """INSERT INTO tasks (id, title, prompt, model, priority, work_dir, flow_id, permissions, agent_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (task_id, body.title, merged_prompt, model, body.priority, work_dir, flow_id, permissions_json, agent_id),
-        )
+        await db_tasks.insert_spawned(db, task_id, body.title, merged_prompt,
+                                       model, body.priority, work_dir, flow_id,
+                                       permissions_json, agent_id)
 
         # Insert dependency rows
         depends_on = list(body.depends_on or [])
         for dep_id in depends_on:
             if dep_id != task_id:
-                await db.execute(
-                    "INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_task_id) VALUES (?, ?)",
-                    (task_id, dep_id),
-                )
+                await db_deps.insert(db, task_id, dep_id)
 
         # Optionally trigger a run immediately
         run = None
         if body.trigger:
             run_id = str(uuid.uuid4())
-            await db.execute(
-                """INSERT INTO task_runs (id, task_id, run_number, trigger, status)
-                   VALUES (?, ?, 1, 'manual', 'queued')""",
-                (run_id, task_id),
-            )
+            await db_task_runs.insert(db, run_id, task_id, 1, trigger="manual")
             run = {"id": run_id, "task_id": task_id, "run_number": 1}
 
         await db.commit()
-        cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
-        task_result = dict(await cursor.fetchone())
+        task_row = await db_tasks.get_by_id(db, task_id)
+        task_result = dict(task_row)
         try:
             task_result["permissions"] = json.loads(task_result.get("permissions") or "{}")
         except (json.JSONDecodeError, TypeError):

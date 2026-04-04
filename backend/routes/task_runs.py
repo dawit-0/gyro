@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from database import get_db
+from db import task_runs as db_task_runs, task_run_output as db_output
 
 router = APIRouter(prefix="/api/task-runs", tags=["task-runs"])
 
@@ -8,14 +9,7 @@ router = APIRouter(prefix="/api/task-runs", tags=["task-runs"])
 async def list_task_runs(task_id: str = None):
     db = await get_db()
     try:
-        if task_id:
-            cursor = await db.execute(
-                "SELECT * FROM task_runs WHERE task_id = ? ORDER BY started_at DESC",
-                (task_id,),
-            )
-        else:
-            cursor = await db.execute("SELECT * FROM task_runs ORDER BY started_at DESC")
-        rows = await cursor.fetchall()
+        rows = await db_task_runs.list_all(db, task_id=task_id)
         return [dict(r) for r in rows]
     finally:
         await db.close()
@@ -25,8 +19,7 @@ async def list_task_runs(task_id: str = None):
 async def get_task_run(run_id: str):
     db = await get_db()
     try:
-        cursor = await db.execute("SELECT * FROM task_runs WHERE id = ?", (run_id,))
-        row = await cursor.fetchone()
+        row = await db_task_runs.get_by_id(db, run_id)
         if not row:
             return {"error": "not found"}, 404
         return dict(row)
@@ -38,11 +31,6 @@ async def get_task_run(run_id: str):
 async def get_task_run_output(run_id: str):
     db = await get_db()
     try:
-        cursor = await db.execute(
-            "SELECT * FROM task_run_output WHERE task_run_id = ? ORDER BY seq ASC",
-            (run_id,),
-        )
-        rows = await cursor.fetchall()
-        return [dict(r) for r in rows]
+        return await db_output.list_by_run(db, run_id)
     finally:
         await db.close()
