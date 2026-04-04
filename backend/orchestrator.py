@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import traceback
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -11,7 +12,10 @@ import cron as cron_parser
 from database import get_db
 from db import tasks as db_tasks, task_runs as db_task_runs, flows as db_flows
 from db import task_run_output as db_output, task_dependencies as db_deps
+from logging_config import get_logger, task_logger
 from models import DEFAULT_PERMISSIONS
+
+logger = get_logger("orchestrator")
 
 MAX_CONCURRENT_RUNS = 5
 POLL_INTERVAL = 2  # seconds
@@ -39,11 +43,14 @@ class Orchestrator:
     async def _poll_loop(self):
         while True:
             try:
+                logger.debug("poll cycle: %d active runs, %d slots available",
+                             len(self.running_processes),
+                             MAX_CONCURRENT_RUNS - len(self.running_processes))
                 await self._check_task_schedules()
                 await self._check_flow_schedules()
                 await self._dispatch_queued_runs()
-            except Exception as e:
-                print(f"[orchestrator] poll error: {e}")
+            except Exception:
+                logger.exception("poll cycle error")
             await asyncio.sleep(POLL_INTERVAL)
 
     async def _check_task_schedules(self):
@@ -59,6 +66,7 @@ class Orchestrator:
                 run_number = await db_task_runs.next_run_number(db, task_id)
                 run_id = str(uuid.uuid4())
 
+                logger.info("schedule triggered task=%s", task_id)
                 await db_task_runs.insert(db, run_id, task_id, run_number,
                                           trigger="schedule")
 
@@ -87,6 +95,7 @@ class Orchestrator:
 
                 root_tasks = await db_tasks.get_root_tasks_alt(db, flow_id)
 
+                logger.info("schedule triggered flow=%s, %d root tasks", flow_id, len(root_tasks))
                 for task_row in root_tasks:
                     task_id = task_row["id"]
                     run_number = await db_task_runs.next_run_number(db, task_id)
@@ -108,6 +117,7 @@ class Orchestrator:
 
     async def _dispatch_queued_runs(self):
         if len(self.running_processes) >= MAX_CONCURRENT_RUNS:
+            logger.debug("at capacity (%d running), skipping dispatch", MAX_CONCURRENT_RUNS)
             return
 
         db = await get_db()
@@ -115,6 +125,8 @@ class Orchestrator:
             slots = MAX_CONCURRENT_RUNS - len(self.running_processes)
             runs = await db_task_runs.get_queued_ready(db, slots)
 
+            if runs:
+                logger.debug("dispatching %d queued runs", len(runs))
             for run in runs:
                 await self._start_run(db, run)
         finally:
@@ -123,6 +135,8 @@ class Orchestrator:
     async def _start_run(self, db: aiosqlite.Connection, run: dict):
         run_id = run["id"]
         task_id = run["task_id"]
+
+        logger.info("starting run=%s task=%s trigger=%s", run_id, task_id, run.get("trigger", "?"))
 
         await db_task_runs.set_running(db, run_id)
         await db.commit()
@@ -146,6 +160,19 @@ class Orchestrator:
             tools.append("mcp__*")
         return tools
 
+    async def _emit_event(self, db, run_id: str, task_id: str, seq: int, event_data: dict):
+        """Insert a lifecycle event into task_run_output and emit via Socket.IO."""
+        content = json.dumps(event_data)
+        await db_output.insert(db, run_id, seq, "event", content)
+        await db.commit()
+        await self.sio.emit("task_run:output", {
+            "task_run_id": run_id,
+            "task_id": task_id,
+            "seq": seq,
+            "type": "event",
+            "content": content,
+        })
+
     async def _execute_run(self, run_id: str, run: dict):
         task_id = run["task_id"]
         work_dir = run["work_dir"] or os.getcwd()
@@ -153,6 +180,7 @@ class Orchestrator:
         prompt = run["prompt"]
         start_time = datetime.now(timezone.utc)
         seq = 0
+        tlog = task_logger(run_id, task_id)
 
         try:
             permissions = json.loads(run.get("permissions") or "{}")
@@ -181,11 +209,14 @@ class Orchestrator:
                 cwd=work_dir,
             )
             self.running_processes[run_id] = proc
+            tlog.info("subprocess started pid=%d", proc.pid)
 
             db = await get_db()
             try:
                 await db_task_runs.set_pid(db, run_id, proc.pid)
-                await db.commit()
+                seq += 1
+                await self._emit_event(db, run_id, task_id, seq,
+                                        {"event": "subprocess_started", "pid": proc.pid})
             finally:
                 await db.close()
 
@@ -246,8 +277,16 @@ class Orchestrator:
             elapsed = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
             status = "success" if exit_code == 0 else "failed"
 
+            tlog.info("finished status=%s exit=%s duration=%dms", status, exit_code, elapsed)
+            if stderr_data and status == "failed":
+                tlog.warning("stderr: %s", stderr_data[:500])
+
             db = await get_db()
             try:
+                seq += 1
+                await self._emit_event(db, run_id, task_id, seq,
+                                        {"event": "subprocess_exited", "exit_code": exit_code, "duration_ms": elapsed})
+
                 await db_task_runs.set_finished(db, run_id, status,
                                                  exit_code=exit_code,
                                                  duration_ms=elapsed,
@@ -275,11 +314,13 @@ class Orchestrator:
             })
             await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": status})
 
-        except Exception as e:
+        except Exception:
             elapsed = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+            tlog.exception("run failed with exception after %dms", elapsed)
+            error_msg = traceback.format_exc()
             db = await get_db()
             try:
-                await db_task_runs.set_failed(db, run_id, elapsed, str(e))
+                await db_task_runs.set_failed(db, run_id, elapsed, error_msg)
                 retried = await self._maybe_auto_retry(db, run_id, task_id)
                 if not retried:
                     await self._cascade_cancel_downstream(db, task_id)
@@ -291,7 +332,7 @@ class Orchestrator:
                 "id": run_id,
                 "task_id": task_id,
                 "status": "failed",
-                "error_message": str(e),
+                "error_message": error_msg,
             })
             await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "failed"})
         finally:
@@ -307,10 +348,14 @@ class Orchestrator:
         attempt = run["attempt_number"] if run and run["attempt_number"] else 1
 
         if attempt >= task["max_retries"]:
+            logger.warning("run=%s task=%s exhausted retries (%d/%d)",
+                           failed_run_id, task_id, attempt, task["max_retries"])
             return False
 
         # Schedule a retry
         delay = task["retry_delay_seconds"] or 10
+        logger.info("scheduling retry attempt=%d for run=%s task=%s in %ds",
+                     attempt + 1, failed_run_id, task_id, delay)
         asyncio.create_task(self._delayed_retry(task_id, failed_run_id, attempt + 1, delay))
         return True
 
@@ -394,6 +439,7 @@ class Orchestrator:
             # Check all upstream deps have a successful latest run
             unmet_deps = await db_deps.get_unmet_upstream(db, downstream_id)
             if unmet_deps:
+                logger.debug("task=%s has unmet deps, skipping cascade", downstream_id)
                 continue
 
             # Check no queued/running run already exists for this task
@@ -404,6 +450,8 @@ class Orchestrator:
             run_number = await db_task_runs.next_run_number(db, downstream_id)
             run_id = str(uuid.uuid4())
 
+            logger.info("cascade: queuing downstream task=%s (triggered by task=%s)",
+                        downstream_id, completed_task_id)
             await db_task_runs.insert(db, run_id, downstream_id, run_number,
                                       trigger="dependency")
 
@@ -416,6 +464,8 @@ class Orchestrator:
         for row in queued_runs:
             run_id = row["id"]
             task_id = row["task_id"]
+            logger.warning("cascade cancel: run=%s task=%s (upstream task=%s failed)",
+                           run_id, task_id, failed_task_id)
             await db_task_runs.cancel(db, run_id)
             await self.sio.emit("task:updated", {"id": task_id, "latest_run_status": "cancelled"})
             await self.sio.emit("task_run:finished", {"id": run_id, "task_id": task_id, "status": "cancelled"})
@@ -432,11 +482,14 @@ class Orchestrator:
                 run_id = run["id"]
                 proc = self.running_processes.get(run_id)
                 if proc:
+                    logger.info("cancelling task=%s run=%s pid=%s", task_id, run_id, proc.pid)
                     try:
                         proc.terminate()
                     except ProcessLookupError:
                         pass
                     self.running_processes.pop(run_id, None)
+                else:
+                    logger.info("cancelling task=%s run=%s (no active process)", task_id, run_id)
 
                 await db_task_runs.cancel(db, run_id)
                 await self._cascade_cancel_downstream(db, task_id)

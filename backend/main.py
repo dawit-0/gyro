@@ -1,12 +1,18 @@
 import asyncio
+import time
 from contextlib import asynccontextmanager
 
 import socketio
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+
+from logging_config import setup_logging, get_logger
+
+setup_logging()
+logger = get_logger("server")
 
 from database import init_db
 from orchestrator import Orchestrator
@@ -14,6 +20,7 @@ from routes.tasks import router as tasks_router
 from routes.task_runs import router as task_runs_router
 from routes.flows import router as flows_router
 from routes.agents import router as agents_router
+from routes.debug import router as debug_router
 
 # Socket.IO
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
@@ -42,6 +49,21 @@ app.include_router(tasks_router)
 app.include_router(task_runs_router)
 app.include_router(flows_router)
 app.include_router(agents_router)
+app.include_router(debug_router)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    if request.url.path.startswith("/socket.io"):
+        return await call_next(request)
+    start = time.time()
+    response = await call_next(request)
+    ms = int((time.time() - start) * 1000)
+    level = "WARNING" if response.status_code >= 400 else "INFO"
+    getattr(logger, level.lower())(
+        "%s %s -> %s (%dms)", request.method, request.url.path, response.status_code, ms
+    )
+    return response
 
 
 # Cancel task run endpoint that needs orchestrator
@@ -54,12 +76,12 @@ async def cancel_task(task_id: str):
 # Socket.IO events
 @sio.event
 async def connect(sid, environ):
-    print(f"[ws] client connected: {sid}")
+    logger.info("client connected: %s", sid)
 
 
 @sio.event
 async def disconnect(sid):
-    print(f"[ws] client disconnected: {sid}")
+    logger.info("client disconnected: %s", sid)
 
 
 # Mount Socket.IO
