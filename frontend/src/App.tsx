@@ -7,6 +7,7 @@ import TaskForm from "./components/TaskForm";
 import AssistantList from "./components/AssistantList";
 import AssistantForm from "./components/AssistantForm";
 import TaskFlowView from "./components/TaskFlowView";
+import FlowDashboard from "./components/FlowDashboard";
 
 export interface TaskPrefill {
   title: string;
@@ -29,6 +30,7 @@ export default function App() {
   const [editingAssistant, setEditingAssistant] = useState<Assistant | null>(null);
   const [taskPrefill, setTaskPrefill] = useState<Partial<TaskPrefill> | null>(null);
   const [showQuickTask, setShowQuickTask] = useState(false);
+  const [showNewFlowForm, setShowNewFlowForm] = useState(false);
 
   const loadTasks = useCallback(async () => {
     const data = await api.tasks.list(selectedFlow || undefined);
@@ -124,10 +126,14 @@ export default function App() {
   }
 
   async function handleQuickTask(title: string, prompt: string) {
-    await api.tasks.quickCreate({ title, prompt, trigger: true });
+    const task = await api.tasks.quickCreate({ title, prompt, trigger: true });
     loadTasks();
     loadFlows();
     setShowQuickTask(false);
+    // Auto-select the created flow
+    if (task && task.flow_id) {
+      setSelectedFlow(task.flow_id);
+    }
   }
 
   return (
@@ -135,10 +141,13 @@ export default function App() {
       <Header
         tasks={tasks}
         view={view}
-        onViewChange={setView}
-        onNewTask={() => {
-          setTaskPrefill(null);
-          setShowTaskForm(true);
+        onViewChange={(v) => {
+          setView(v);
+          if (v === "flows") setSelectedFlow(null);
+        }}
+        onNewFlow={() => {
+          setSelectedFlow(null);
+          setShowNewFlowForm(true);
         }}
         onNewAssistant={() => {
           setEditingAssistant(null);
@@ -171,7 +180,8 @@ export default function App() {
           }}
           onRetryFlow={handleRetryFlow}
           onResumeFlow={handleResumeFlow}
-          onQuickTask={() => setShowQuickTask(true)}
+          showNewFlowForm={showNewFlowForm}
+          onShowNewFlowForm={setShowNewFlowForm}
         />
         <main className="content">
           {view === "assistants" ? (
@@ -185,7 +195,7 @@ export default function App() {
                 setShowAssistantForm(true);
               }}
             />
-          ) : (
+          ) : selectedFlow ? (
             <TaskFlowView
               selectedFlow={selectedFlow}
               onCancel={handleCancel}
@@ -194,6 +204,13 @@ export default function App() {
               onRetryTask={handleRetryTask}
               onRetryFlow={handleRetryFlow}
               onResumeFlow={handleResumeFlow}
+            />
+          ) : (
+            <FlowDashboard
+              flows={flows}
+              tasks={tasks}
+              onSelectFlow={setSelectedFlow}
+              onNewFlow={() => setShowNewFlowForm(true)}
             />
           )}
         </main>

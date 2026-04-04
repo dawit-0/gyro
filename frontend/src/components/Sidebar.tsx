@@ -16,7 +16,8 @@ interface Props {
   onTriggerFlow: (id: string) => void;
   onRetryFlow: (id: string) => void;
   onResumeFlow: (id: string) => void;
-  onQuickTask: () => void;
+  showNewFlowForm: boolean;
+  onShowNewFlowForm: (show: boolean) => void;
 }
 
 export default function Sidebar({
@@ -34,18 +35,29 @@ export default function Sidebar({
   onTriggerFlow,
   onRetryFlow,
   onResumeFlow,
-  onQuickTask,
+  showNewFlowForm,
+  onShowNewFlowForm,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [newName, setNewName] = useState("");
-  const [showForm, setShowForm] = useState(false);
+  const [localShowForm, setLocalShowForm] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const showForm = showNewFlowForm || localShowForm;
 
   async function handleCreate() {
     if (!newName.trim()) return;
     await api.flows.create({ name: newName.trim() });
     setNewName("");
-    setShowForm(false);
+    setLocalShowForm(false);
+    onShowNewFlowForm(false);
     onFlowsChange();
+  }
+
+  function handleCloseForm() {
+    setLocalShowForm(false);
+    onShowNewFlowForm(false);
+    setNewName("");
   }
 
   const runningTasks = tasks.filter(
@@ -55,11 +67,29 @@ export default function Sidebar({
     (t) => t.latest_run?.status === "failed"
   );
   const scheduledTasks = tasks.filter((t) => t.schedule);
-  const queuedTasks = tasks.filter(
-    (t) => t.latest_run?.status === "queued"
-  );
 
   const selectedFlowData = flows.find((f) => f.id === selectedFlow);
+
+  // Tasks for the selected flow
+  const flowTasks = selectedFlow
+    ? tasks.filter((t) => t.flow_id === selectedFlow)
+    : [];
+  const flowRunning = flowTasks.filter((t) => t.latest_run?.status === "running");
+  const flowFailed = flowTasks.filter((t) => t.latest_run?.status === "failed");
+
+  // Filter flows by search
+  const filteredFlows = searchQuery
+    ? flows.filter((f) => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : flows;
+
+  function getTaskStatusColor(task: Task): string {
+    const status = task.latest_run?.status;
+    if (status === "running") return "var(--success)";
+    if (status === "failed") return "var(--danger)";
+    if (status === "queued") return "var(--queued)";
+    if (status === "success") return "var(--success)";
+    return "var(--text-muted)";
+  }
 
   return (
     <aside className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
@@ -88,26 +118,49 @@ export default function Sidebar({
       {!collapsed && (
         <div className="sidebar-inner">
           {/* ── Flows Tab ── */}
-          {view === "flows" && (
+          {view === "flows" && !selectedFlow && (
             <>
+              {/* Search */}
+              <div className="sidebar-section" style={{ borderBottom: "none", paddingBottom: 0 }}>
+                <div className="sidebar-search">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="sidebar-search-icon">
+                    <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="2" />
+                    <path d="M11 11l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                  <input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search flows..."
+                    className="sidebar-search-input"
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setSearchQuery("");
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Flow List */}
               <div className="sidebar-section">
                 <h3>Flows</h3>
-                <div
-                  className={`project-item ${selectedFlow === null ? "active" : ""}`}
-                  onClick={() => onSelectFlow(null)}
-                >
-                  <span>All Flows</span>
-                  <span className="sidebar-count">{tasks.length}</span>
-                </div>
-                {flows.map((f) => {
+                {filteredFlows.map((f) => {
                   const count = tasks.filter((t) => t.flow_id === f.id).length;
+                  const hasRunning = tasks.some((t) => t.flow_id === f.id && t.latest_run?.status === "running");
+                  const hasFailed = tasks.some((t) => t.flow_id === f.id && t.latest_run?.status === "failed");
                   return (
                     <div
                       key={f.id}
-                      className={`project-item ${selectedFlow === f.id ? "active" : ""}`}
+                      className="project-item"
                       onClick={() => onSelectFlow(f.id)}
                     >
-                      <span>{f.name}</span>
+                      <span className="sidebar-flow-name">
+                        <span
+                          className="sidebar-flow-dot"
+                          style={{
+                            background: hasRunning ? "var(--success)" : hasFailed ? "var(--danger)" : "var(--text-muted)",
+                          }}
+                        />
+                        {f.name}
+                      </span>
                       <span className="sidebar-item-right">
                         {f.schedule && (
                           <span className="flow-schedule-badge" title={f.schedule}>
@@ -119,6 +172,9 @@ export default function Sidebar({
                     </div>
                   );
                 })}
+                {filteredFlows.length === 0 && searchQuery && (
+                  <div className="sidebar-empty-hint">No flows match "{searchQuery}"</div>
+                )}
                 {showForm ? (
                   <div style={{ marginTop: 8 }}>
                     <input
@@ -127,10 +183,7 @@ export default function Sidebar({
                       placeholder="Flow name"
                       onKeyDown={(e) => {
                         if (e.key === "Enter") handleCreate();
-                        if (e.key === "Escape") {
-                          setShowForm(false);
-                          setNewName("");
-                        }
+                        if (e.key === "Escape") handleCloseForm();
                       }}
                       className="sidebar-inline-input"
                       autoFocus
@@ -139,76 +192,14 @@ export default function Sidebar({
                 ) : (
                   <div
                     className="project-item sidebar-add-item"
-                    onClick={() => setShowForm(true)}
+                    onClick={() => setLocalShowForm(true)}
                   >
                     + New Flow
                   </div>
                 )}
               </div>
 
-              {selectedFlow && selectedFlowData && (
-                <div className="sidebar-section">
-                  <h3>Flow Actions</h3>
-                  <button
-                    className="sidebar-action-btn"
-                    onClick={() => onTriggerFlow(selectedFlow)}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                      <path d="M4 2l10 6-10 6V2z" fill="currentColor" />
-                    </svg>
-                    Trigger Flow
-                  </button>
-                  <button
-                    className="sidebar-action-btn sidebar-action-warning"
-                    onClick={() => onRetryFlow(selectedFlow)}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                      <path
-                        d="M2 8a6 6 0 0111.5-2.5M14 8a6 6 0 01-11.5 2.5"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                      <path d="M14 2v4h-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M2 14v-4h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    Retry Failed
-                  </button>
-                  <button
-                    className="sidebar-action-btn sidebar-action-accent"
-                    onClick={() => onResumeFlow(selectedFlow)}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                      <path d="M3 2l5 6-5 6V2z" fill="currentColor" />
-                      <path d="M9 2l5 6-5 6V2z" fill="currentColor" />
-                    </svg>
-                    Resume Flow
-                  </button>
-                  <button className="sidebar-action-btn" onClick={onNewTask}>
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                    Add Task to Flow
-                  </button>
-                </div>
-              )}
-
-              <div className="sidebar-section">
-                <h3>Quick Actions</h3>
-                <button className="sidebar-action-btn" onClick={onQuickTask}>
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                    <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                  Quick Task
-                </button>
-                <button className="sidebar-action-btn" onClick={onNewTask}>
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                    <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                  New Task
-                </button>
-              </div>
-
+              {/* Overview Stats */}
               <div className="sidebar-section">
                 <h3>Overview</h3>
                 <div className="sidebar-stats">
@@ -237,6 +228,7 @@ export default function Sidebar({
                 </div>
               </div>
 
+              {/* Running Now */}
               {runningTasks.length > 0 && (
                 <div className="sidebar-section">
                   <h3>Running Now</h3>
@@ -253,6 +245,131 @@ export default function Sidebar({
                   )}
                 </div>
               )}
+            </>
+          )}
+
+          {/* ── Flow Detail (State B) ── */}
+          {view === "flows" && selectedFlow && selectedFlowData && (
+            <>
+              {/* Back Button */}
+              <div className="sidebar-section" style={{ borderBottom: "none", paddingBottom: 0 }}>
+                <button
+                  className="sidebar-back-btn"
+                  onClick={() => onSelectFlow(null)}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Flows
+                </button>
+              </div>
+
+              {/* Flow Info */}
+              <div className="sidebar-section">
+                <div className="sidebar-flow-header">
+                  <h2 className="sidebar-flow-title">{selectedFlowData.name}</h2>
+                  {selectedFlowData.description && (
+                    <p className="sidebar-flow-desc">{selectedFlowData.description}</p>
+                  )}
+                  {selectedFlowData.schedule && (
+                    <span className="sidebar-flow-schedule">
+                      &#x23f0; {selectedFlowData.schedule}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Flow Actions */}
+              <div className="sidebar-section">
+                <h3>Actions</h3>
+                <button
+                  className="sidebar-action-btn"
+                  onClick={() => onTriggerFlow(selectedFlow)}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path d="M4 2l10 6-10 6V2z" fill="currentColor" />
+                  </svg>
+                  Trigger Flow
+                </button>
+                {flowFailed.length > 0 && (
+                  <button
+                    className="sidebar-action-btn sidebar-action-warning"
+                    onClick={() => onRetryFlow(selectedFlow)}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path
+                        d="M2 8a6 6 0 0111.5-2.5M14 8a6 6 0 01-11.5 2.5"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                      <path d="M14 2v4h-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M2 14v-4h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Retry Failed
+                  </button>
+                )}
+                {flowFailed.length > 0 && (
+                  <button
+                    className="sidebar-action-btn sidebar-action-accent"
+                    onClick={() => onResumeFlow(selectedFlow)}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path d="M3 2l5 6-5 6V2z" fill="currentColor" />
+                      <path d="M9 2l5 6-5 6V2z" fill="currentColor" />
+                    </svg>
+                    Resume Flow
+                  </button>
+                )}
+                <button className="sidebar-action-btn" onClick={onNewTask}>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                  Add Task to Flow
+                </button>
+              </div>
+
+              {/* Task List */}
+              {flowTasks.length > 0 && (
+                <div className="sidebar-section">
+                  <h3>Tasks ({flowTasks.length})</h3>
+                  {flowTasks.map((t) => (
+                    <div key={t.id} className="sidebar-task-item">
+                      <span
+                        className="sidebar-task-dot"
+                        style={{ background: getTaskStatusColor(t) }}
+                      />
+                      <span className="sidebar-task-name">{t.title}</span>
+                      <span className="sidebar-task-status">
+                        {t.latest_run?.status || "idle"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Flow Stats */}
+              <div className="sidebar-section">
+                <h3>Stats</h3>
+                <div className="sidebar-stats">
+                  <div className="sidebar-stat">
+                    <span className="sidebar-stat-value">{flowTasks.length}</span>
+                    <span className="sidebar-stat-label">Tasks</span>
+                  </div>
+                  <div className="sidebar-stat">
+                    <span className="sidebar-stat-value sidebar-stat-running">
+                      {flowRunning.length}
+                    </span>
+                    <span className="sidebar-stat-label">Running</span>
+                  </div>
+                  <div className="sidebar-stat">
+                    <span className="sidebar-stat-value sidebar-stat-failed">
+                      {flowFailed.length}
+                    </span>
+                    <span className="sidebar-stat-label">Failed</span>
+                  </div>
+                </div>
+              </div>
             </>
           )}
 

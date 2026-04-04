@@ -5,12 +5,12 @@ interface Props {
   tasks: Task[];
   view: "flows" | "assistants";
   onViewChange: (view: "flows" | "assistants") => void;
-  onNewTask: () => void;
+  onNewFlow: () => void;
   onNewAssistant: () => void;
   onQuickTask: () => void;
 }
 
-export default function Header({ tasks, view, onViewChange, onNewTask, onNewAssistant, onQuickTask }: Props) {
+export default function Header({ tasks, view, onViewChange, onNewFlow, onNewAssistant, onQuickTask }: Props) {
   return (
     <header className="header">
       <div className="header-left">
@@ -48,8 +48,8 @@ export default function Header({ tasks, view, onViewChange, onNewTask, onNewAssi
             <button className="btn btn-secondary" onClick={onQuickTask}>
               + Quick Task
             </button>
-            <button className="btn btn-primary" onClick={onNewTask}>
-              + New Task
+            <button className="btn btn-primary" onClick={onNewFlow}>
+              + New Flow
             </button>
           </>
         ) : (
