@@ -56,6 +56,13 @@ export default function App() {
     loadAgents();
   }, [loadTasks, loadFlows, loadAgents]);
 
+  // Load theme on startup
+  useEffect(() => {
+    api.settings.get().then((s) => {
+      document.documentElement.setAttribute("data-theme", s.theme || "dark");
+    }).catch(() => {});
+  }, []);
+
   // Real-time updates
   useEffect(() => {
     function onTaskUpdated(data: { id: string; latest_run_status: string }) {

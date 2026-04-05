@@ -27,6 +27,11 @@ class Orchestrator:
         self.sio = sio
         self.running_providers: dict[str, "BaseProvider"] = {}  # run_id -> provider
         self._poll_task: Optional[asyncio.Task] = None
+        self._max_concurrent_runs: int = MAX_CONCURRENT_RUNS
+
+    def update_max_concurrent(self, value: int):
+        self._max_concurrent_runs = value
+        logger.info("max_concurrent_runs updated to %d", value)
 
     async def start(self):
         self._poll_task = asyncio.create_task(self._poll_loop())
@@ -46,7 +51,7 @@ class Orchestrator:
             try:
                 logger.debug("poll cycle: %d active runs, %d slots available",
                              len(self.running_providers),
-                             MAX_CONCURRENT_RUNS - len(self.running_providers))
+                             self._max_concurrent_runs - len(self.running_providers))
                 await self._check_task_schedules()
                 await self._check_flow_schedules()
                 await self._dispatch_queued_runs()
@@ -117,13 +122,13 @@ class Orchestrator:
             await db.close()
 
     async def _dispatch_queued_runs(self):
-        if len(self.running_providers) >= MAX_CONCURRENT_RUNS:
-            logger.debug("at capacity (%d running), skipping dispatch", MAX_CONCURRENT_RUNS)
+        if len(self.running_providers) >= self._max_concurrent_runs:
+            logger.debug("at capacity (%d running), skipping dispatch", self._max_concurrent_runs)
             return
 
         db = await get_db()
         try:
-            slots = MAX_CONCURRENT_RUNS - len(self.running_providers)
+            slots = self._max_concurrent_runs - len(self.running_providers)
             runs = await db_task_runs.get_queued_ready(db, slots)
 
             if runs:

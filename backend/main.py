@@ -14,7 +14,7 @@ from logging_config import setup_logging, get_logger
 setup_logging()
 logger = get_logger("server")
 
-from database import init_db
+from database import init_db, get_db
 from orchestrator import Orchestrator
 from routes.tasks import router as tasks_router
 from routes.task_runs import router as task_runs_router
@@ -22,6 +22,7 @@ from routes.flows import router as flows_router
 from routes.agents import router as agents_router
 from routes.debug import router as debug_router
 from routes.models import router as models_router
+from routes.settings import router as settings_router
 
 # Socket.IO
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
@@ -32,7 +33,22 @@ orchestrator = Orchestrator(sio)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import os
+    from db import settings as db_settings
+
     await init_db()
+
+    # Load max_concurrent_runs from saved settings
+    db = await get_db()
+    try:
+        val = await db_settings.get(db, "max_concurrent_runs")
+        if val is not None:
+            try:
+                orchestrator.update_max_concurrent(int(val))
+            except (ValueError, TypeError):
+                pass
+    finally:
+        await db.close()
+
     await orchestrator.start()
     if not os.environ.get("OPENAI_API_KEY"):
         logger.warning("OPENAI_API_KEY not set — OpenAI/Codex models will not work until it is configured")
@@ -55,6 +71,7 @@ app.include_router(flows_router)
 app.include_router(agents_router)
 app.include_router(debug_router)
 app.include_router(models_router)
+app.include_router(settings_router)
 
 
 @app.middleware("http")
