@@ -6,7 +6,7 @@
       "runtimeExecutable": "/opt/homebrew/bin/npx",
       "runtimeArgs": ["vite", "--host"],
       "port": 5173,
-      "cwd": "/Users/dawit/dev/gyro/frontend"
+      "cwd": "/Users/dawit/dev/agentflow/frontend"
     }
   ]
 }
