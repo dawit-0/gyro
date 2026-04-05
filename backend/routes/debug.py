@@ -49,7 +49,7 @@ async def debug_status():
             "running": poll_alive,
             "active_runs": len(active_run_ids),
             "active_run_ids": active_run_ids,
-            "max_concurrent": 5,
+            "max_concurrent": orchestrator._max_concurrent_runs,
             "poll_interval_seconds": 2,
         },
         "queued_runs": queued_count,

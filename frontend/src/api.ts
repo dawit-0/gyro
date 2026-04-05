@@ -166,6 +166,12 @@ export interface Model {
   provider: string;
 }
 
+export interface Settings {
+  default_work_dir: string;
+  max_concurrent_runs: number;
+  theme: "dark" | "light";
+}
+
 export interface DebugStatus {
   orchestrator: {
     running: boolean;
@@ -373,6 +379,14 @@ export const api = {
     ) =>
       request<Task>(`/agents/${id}/spawn`, {
         method: "POST",
+        body: JSON.stringify(data),
+      }),
+  },
+  settings: {
+    get: () => request<Settings>("/settings"),
+    update: (data: Partial<Settings>) =>
+      request<Settings>("/settings", {
+        method: "PATCH",
         body: JSON.stringify(data),
       }),
   },

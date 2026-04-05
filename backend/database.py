@@ -112,6 +112,11 @@ async def init_db():
                 timestamp TEXT DEFAULT (datetime('now'))
             );
 
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS questions (
                 id TEXT PRIMARY KEY,
                 task_run_id TEXT NOT NULL REFERENCES task_runs(id),
