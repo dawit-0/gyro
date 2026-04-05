@@ -1,4 +1,4 @@
-# <span style="color: #228B22;">GYRO</span>
+# <span style="color: #228B22;">AgentFlow</span>
 
 A local webapp for orchestration of Claude agents.
 

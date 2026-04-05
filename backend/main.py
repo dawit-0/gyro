@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI):
 
 
 # FastAPI
-app = FastAPI(title="Gyro", lifespan=lifespan)
+app = FastAPI(title="AgentFlow", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

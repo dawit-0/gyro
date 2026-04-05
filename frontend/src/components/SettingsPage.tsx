@@ -42,7 +42,7 @@ export default function SettingsPage() {
       <div className="settings-container">
         <div className="settings-header">
           <h2>Settings</h2>
-          <p className="settings-subtitle">Configure your local Gyro instance</p>
+          <p className="settings-subtitle">Configure your local AgentFlow instance</p>
         </div>
 
         <div className="settings-sections">

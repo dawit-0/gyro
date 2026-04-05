@@ -8,9 +8,9 @@ backend/.env
 backend/.pytest_cache/
 
 # SQLite database files
-backend/gyro.db
-backend/gyro.db-shm
-backend/gyro.db-wal
+backend/agentflow.db
+backend/agentflow.db-shm
+backend/agentflow.db-wal
 
 # Node
 frontend/node_modules/

@@ -3,7 +3,7 @@ import os
 
 
 def setup_logging():
-    level = os.environ.get("GYRO_LOG_LEVEL", "INFO").upper()
+    level = os.environ.get("AGENTFLOW_LOG_LEVEL", "INFO").upper()
     logging.basicConfig(
         level=level,
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
@@ -14,7 +14,7 @@ def setup_logging():
 
 
 def get_logger(name: str) -> logging.Logger:
-    return logging.getLogger(f"gyro.{name}")
+    return logging.getLogger(f"agentflow.{name}")
 
 
 class _TaskLoggerAdapter(logging.LoggerAdapter):
@@ -25,5 +25,5 @@ class _TaskLoggerAdapter(logging.LoggerAdapter):
 
 
 def task_logger(run_id: str, task_id: str) -> logging.LoggerAdapter:
-    logger = logging.getLogger("gyro.orchestrator")
+    logger = logging.getLogger("agentflow.orchestrator")
     return _TaskLoggerAdapter(logger, {"run_id": run_id, "task_id": task_id})
